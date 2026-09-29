@@ -37,6 +37,8 @@ $ vcs fork     [-v <num>] [-d <basedir>] [-b <branch>] <worktree> [<parent-branc
 $ vcs sync     [-v <num>] [-d <basedir>] [-s] [<worktree>]
 $ vcs merge    [-v <num>] [-d <basedir>] [-m merge|rebase|squash] [-s] [<worktree>]
 $ vcs resolve  [-v <num>] [-d <basedir>] [-s] [<worktree>]
+$ vcs shuffle  [-v <num>] [-d <basedir>] [-s] <worktree>
+$ vcs clean    [-v <num>] [-d <basedir>] [-i] [<worktree>]
 $ vcs rename   [-v <num>] [-d <basedir>] <worktree-old> <worktree-new>
 $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
 ```
@@ -91,6 +93,20 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
 - `resolve [-s] [<worktree>]`<br/>
   Resolve the conflicts in the worktree (default: the worktree containing
   the current directory) and continue its in-progress operation.
+- `shuffle [-s] <worktree>`<br/>
+  Move all staged, unstaged, and untracked files of the worktree
+  containing the current directory into the working copy of the
+  worktree `<worktree>`, where they stay uncommitted, resolving
+  conflicts, both with its branch and with its own uncommitted changes
+  (temporarily committed during the operation). On success, the
+  current worktree is cleaned (see `clean`). On unresolvable conflicts,
+  the current worktree is kept untouched for manual resolution in the
+  other worktree.
+- `clean [-i] [<worktree>]`<br/>
+  Abort any in-progress operation of the worktree (default: the worktree
+  containing the current directory), reset it to its `HEAD`, and remove
+  all untracked files (with `-i` also all ignored files), so the
+  worktree looks as freshly forked.
 - `rename <worktree-old> <worktree-new>`<br/>
   Rename the worktree, both its directory and its Git worktree
   reference. If its branch is named after the worktree, the branch
