@@ -30,12 +30,14 @@ Usage
 
 ```
 $ vcs init     [-v <num>] [-d <basedir>] [-r <repo-url>]
+$ vcs list     [-v <num>] [-d <basedir>]
 $ vcs active   [-v <num>] [-d <basedir>]
 $ vcs activate [-v <num>] [-d <basedir>] [<worktree>]
 $ vcs fork     [-v <num>] [-d <basedir>] [-b <branch>] <worktree> [<parent-branch>]
 $ vcs sync     [-v <num>] [-d <basedir>] [-s] [<worktree>]
 $ vcs merge    [-v <num>] [-d <basedir>] [-m merge|rebase|squash] [-s] [<worktree>]
 $ vcs resolve  [-v <num>] [-d <basedir>] [-s] [<worktree>]
+$ vcs rename   [-v <num>] [-d <basedir>] <worktree-old> <worktree-new>
 $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
 ```
 
@@ -53,6 +55,12 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   in the master worktree, named after the default branch of the
   repository, and activate it. If a master worktree already exists,
   `-r` has to be omitted and the existing master worktree is taken as is.
+- `list`<br/>
+  List all worktrees as a table with their directory, worktree name
+  (`-` if not located directly under the basedir), branch, and an `X`
+  marker for the master, the active, and the current worktree (the one
+  containing the current directory). The master worktree
+  is rendered in bold and the active worktree in blue.
 - `active`<br/>
   Show the active worktree.
 - `activate [<worktree>]`<br/>
@@ -83,6 +91,11 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
 - `resolve [-s] [<worktree>]`<br/>
   Resolve the conflicts in the worktree (default: the worktree containing
   the current directory) and continue its in-progress operation.
+- `rename <worktree-old> <worktree-new>`<br/>
+  Rename the worktree, both its directory and its Git worktree
+  reference. If its branch is named after the worktree, the branch
+  is renamed, too, and child branches are re-pointed to it. If the
+  worktree was active, the renamed worktree is activated.
 - `destroy <worktree>`<br/>
   Remove the worktree and its branch, if the branch has landed on its
   parent branch. If the worktree was active, the master worktree is

@@ -28,7 +28,8 @@
     "dependencies" : {
         "commander":      "15.0.0",
         "execa":          "10.0.1",
-        "chalk":          "6.0.1"
+        "chalk":          "6.0.1",
+        "cli-table3":     "0.6.5"
     },
     "engines": {
         "node":           ">=22.12.0"

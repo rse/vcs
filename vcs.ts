@@ -31,6 +31,7 @@ import path                from "node:path"
 import { Command, Option } from "commander"
 import { execa }           from "execa"
 import chalk               from "chalk"
+import Table               from "cli-table3"
 
 /*  type definitions  */
 type Operation  = "merge" | "rebase" | "cherry-pick" | "revert" | "none"
@@ -691,6 +692,50 @@ const stashPop = async (dir: string, safe: boolean): Promise<Resolution | null> 
             process.stdout.write(`${await fs.promises.readlink(path.join(basedir, "active"))}\n`)
         })
 
+    /*  command: list  */
+    program.command("list")
+        .description("list all worktrees")
+        .option("-d, --basedir <basedir>", "base directory")
+        .action(async (opts: { basedir?: string }) => {
+            const basedir = await findBasedir(opts.basedir)
+            const real    = await fs.promises.realpath(basedir)
+            const active  = await fs.promises.readlink(path.join(basedir, "active"))
+            const list    = await gitOK(path.join(basedir, "active"), [ "worktree", "list", "--porcelain" ], "list worktrees")
+            const top     = await git(process.cwd(), [ "rev-parse", "--show-toplevel" ], "determine the worktree of the current directory")
+            const current = top.failed ? "" : await fs.promises.realpath(top.stdout).catch(() => top.stdout)
+            const table   = new Table({
+                head:      [ "Directory", "Worktree", "Branch", "Master", "Active", "Current" ],
+                colAligns: [ "left", "left", "left", "center", "center", "center" ],
+                style:     { head: [ "bold" ], compact: true }
+            })
+            for (const [ i, block ] of list.split(/\n\n+/).entries()) {
+                const dir = block.match(/^worktree (.+)$/m)?.[1]
+                if (dir === undefined)
+                    continue
+
+                /*  worktree name only for directories located directly under basedir  */
+                const wt     = await fs.promises.realpath(dir).catch(() => dir)
+                const rel    = path.relative(real, wt)
+                const name   = rel === "" || rel.startsWith("..") || path.isAbsolute(rel) || rel.includes(path.sep) ? "-" : rel
+                const branch = block.match(/^branch refs\/heads\/(.+)$/m)?.[1] ??
+                    (/^bare$/m.test(block) ? "(bare)" : "(detached)")
+
+                /*  render master worktree (listed first by Git) in bold and active worktree in blue  */
+                const isMaster = i === 0
+                const isActive = name === active
+                let style = (s: string) => s
+                if (isMaster && isActive)
+                    style = chalk.blue.bold
+                else if (isMaster)
+                    style = chalk.bold
+                else if (isActive)
+                    style = chalk.blue
+                table.push([ style(dir), style(name), style(branch),
+                    style(isMaster ? "X" : ""), style(isActive ? "X" : ""), style(wt === current ? "X" : "") ])
+            }
+            process.stdout.write(`${table.toString()}\n`)
+        })
+
     /*  command: activate  */
     program.command("activate")
         .description("activate a worktree")
@@ -896,6 +941,67 @@ const stashPop = async (dir: string, safe: boolean): Promise<Resolution | null> 
             info(`resolve verdict: ${res.verdict === "PARTIAL" ? chalk.yellow(res.verdict) : chalk.green(res.verdict)}`)
             if (res.verdict === "PARTIAL")
                 process.exitCode = 1
+        })
+
+    /*  command: rename  */
+    program.command("rename")
+        .description("rename a worktree and its branch")
+        .option("-d, --basedir <basedir>", "base directory")
+        .argument("<worktree-old>", "worktree to rename")
+        .argument("<worktree-new>", "new name of worktree")
+        .action(async (oldName: string, newName: string, opts: { basedir?: string }) => {
+            const basedir = await findBasedir(opts.basedir)
+            const name    = await masterName(basedir)
+            if (oldName === name)
+                throw new Error(`master worktree "${name}" cannot be renamed`)
+            if (newName === name)
+                throw new Error(`worktree name "${name}" is reserved for master worktree`)
+            const oldDir = await worktreeDir(basedir, oldName)
+            const newDir = await worktreeDir(basedir, newName, false)
+            if (await exists(newDir))
+                throw new Error(`directory "${newDir}" already exists`)
+            const master = path.join(basedir, name)
+            const branch = await currentBranch(oldDir)
+            const op     = await operation(oldDir)
+            if (op !== "none")
+                throw new Error(`worktree "${oldDir}" has an in-progress ${op} operation`)
+
+            /*  rename branch only if named after the worktree (not explicitly chosen on fork)  */
+            const newBranch = branch === oldName ? newName : branch
+            if (newBranch !== branch && !(await git(master, [ "rev-parse", "--verify", "--quiet", `refs/heads/${newBranch}` ], "check for the existence of the new branch")).failed)
+                throw new Error(`branch "${newBranch}" already exists`)
+
+            /*  repair references of a manually moved worktree and move worktree directory (Git updates its references)  */
+            await gitOK(master, [ "worktree", "repair", oldDir ], "repair the references of the worktree")
+            await gitOK(master, [ "worktree", "move", oldDir, newDir ], "move the worktree")
+
+            /*  rename administrative directory of worktree (paths inside it are sibling-relative or absolute and stay valid)  */
+            const dotgit = path.join(newDir, ".git")
+            const m      = (await fs.promises.readFile(dotgit, "utf8")).match(/^gitdir:\s*(.+?)\s*$/m)
+            if (m !== null && path.basename(m[1]) === oldName) {
+                const oldAdmin = path.resolve(newDir, m[1])
+                const newAdmin = path.join(path.dirname(oldAdmin), newName)
+                if (!(await exists(newAdmin))) {
+                    await fs.promises.rename(oldAdmin, newAdmin)
+                    await fs.promises.writeFile(dotgit, `gitdir: ${path.join(path.dirname(m[1]), newName)}\n`, "utf8")
+                }
+            }
+
+            /*  rename branch (Git moves its config section) and re-point child branches  */
+            if (newBranch !== branch) {
+                await gitOK(newDir, [ "branch", "-m", branch, newBranch ], "rename the branch")
+                const children = await git(master, [ "config", "--get-regexp", "^branch\\..+\\.vcsparent$" ], "list the recorded parent branches")
+                for (const line of children.failed ? [] : children.stdout.split("\n")) {
+                    const c = line.match(/^(branch\..+\.vcsparent) (.*)$/i)
+                    if (c !== null && c[2] === branch)
+                        await gitOK(master, [ "config", c[1], newBranch ], "re-point the recorded parent branch of a child branch")
+                }
+            }
+
+            /*  re-point "active" symlink  */
+            if ((await fs.promises.readlink(path.join(basedir, "active"))) === oldName)
+                await setActive(basedir, newName)
+            info(`worktree "${oldName}" (branch "${branch}") renamed to "${newName}" (branch "${newBranch}")`)
         })
 
     /*  command: destroy  */
