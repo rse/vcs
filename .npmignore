@@ -1,0 +1,8 @@
+/node_modules/
+/vcs.ts
+/tsconfig.json
+/eslint.mjs
+/Makefile
+*~
+*#*
+
