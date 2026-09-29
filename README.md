@@ -168,7 +168,7 @@ each operation runs in and the conditions under which it happens.
 - `sync`:
 
   ```sh
-  git config --get branch.<branch>.vcsParent          # determine <parent-branch>
+  git config --get branch.<branch>.vcsParent           # determine <parent-branch>
   git fetch --quiet origin                             # (only with an "origin" remote)
   git merge --quiet --ff-only origin/<parent-branch>   # in worktree of <parent-branch> (if behind), or
   git update-ref refs/heads/<parent-branch> refs/remotes/origin/<parent-branch>  # (if not checked out)
@@ -184,7 +184,7 @@ each operation runs in and the conditions under which it happens.
 - `merge`:
 
   ```sh
-  git config --get branch.<branch>.vcsParent          # determine <parent-branch>
+  git config --get branch.<branch>.vcsParent           # determine <parent-branch>
   git stash push --quiet --include-untracked           # in worktree of <parent-branch> (only with uncommitted changes)
 
   # mode "merge" (in worktree of <parent-branch>)
@@ -269,7 +269,7 @@ each operation runs in and the conditions under which it happens.
   ```sh
   git merge-base --is-ancestor <branch> <parent-branch>  # check whether branch landed, or else
   git merge-tree --write-tree <parent-branch> <branch>   # check whether squashed branch landed
-  ln -s <master> active                                # (only if worktree was active, atomically)
+  ln -s <master> active                                  # (only if worktree was active, atomically)
   git worktree remove <worktree>
   git branch --quiet -D <branch>
   ```
