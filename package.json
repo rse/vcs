@@ -1,48 +1,41 @@
 {
-    "name":        "vcs",
-    "homepage":    "http://github.com/rse/vcs",
-    "description": "Worktree Management for Git Version Control System",
-    "version":     "0.9.0",
-    "license":     "MIT",
+    "name":               "@rse/vcs",
+    "publishConfig":      { "access": "public" },
+    "homepage":           "http://github.com/rse/vcs",
+    "repository":         { "type": "git", "url":  "git+https://github.com/rse/vcs.git" },
+    "bugs":               { "url":  "http://github.com/rse/vcs/issues" },
+    "description":        "Worktree Management for Git Version Control System",
+    "keywords":           [ "git", "worktree", "branch", "merge", "rebase", "conflict", "resolve" ],
+    "version":            "0.9.0",
+    "license":            "MIT",
     "author": {
-        "name":    "Dr. Ralf S. Engelschall",
-        "email":   "rse@engelschall.com",
-        "url":     "http://engelschall.com"
+        "name":           "Dr. Ralf S. Engelschall",
+        "email":          "rse@engelschall.com",
+        "url":            "http://engelschall.com"
     },
-    "type": "module",
-    "keywords": [
-        "git", "worktree", "branch", "merge", "rebase", "conflict", "resolve"
-    ],
-    "repository": {
-        "type": "git",
-        "url":  "git+https://github.com/rse/vcs.git"
-    },
-    "bugs": {
-        "url":  "http://github.com/rse/vcs/issues"
-    },
-    "bin": {
-        "vcs":  "dst/vcs.js"
-    },
+    "type":               "module",
+    "bin":                { "vcs":  "dst/vcs.js" },
     "devDependencies": {
-        "eslint":                 "10.11.0",
-        "@eslint/js":             "10.0.1",
-        "neostandard":            "0.14.0-next.1",
-        "globals":                "17.12.0",
-        "typescript":             "6.0.3",
-        "@types/node":            "26.6.3"
+        "eslint":         "10.11.0",
+        "@eslint/js":     "10.0.1",
+        "neostandard":    "0.14.0-next.1",
+        "globals":        "17.12.0",
+        "typescript":     "6.0.3",
+        "@types/node":    "26.6.3",
+        "@rse/stx":       "1.1.7",
+        "shx":            "0.4.0"
     },
     "dependencies" : {
-        "commander":              "15.0.0",
-        "execa":                  "10.0.1",
-        "chalk":                  "6.0.1"
+        "commander":      "15.0.0",
+        "execa":          "10.0.1",
+        "chalk":          "6.0.1"
     },
     "engines": {
-        "node":                   ">=22.12.0"
+        "node":           ">=22.12.0"
     },
     "scripts": {
-        "build":                  "tsc",
-        "lint":                   "eslint --config eslint.mjs vcs.ts",
-        "prepublishOnly":         "npm run lint && npm run build"
+        "start":          "stx -v4 -l warning -c etc/stx.conf",
+        "prepublishOnly": "npm start build"
     }
 }
 

@@ -23,7 +23,6 @@
 ##
 
 NPM     = npm
-NPX     = npx
 
 all: build
 
@@ -31,14 +30,14 @@ bootstrap:
 	@if [ ! -d node_modules ]; then $(NPM) install; fi
 
 build: bootstrap
-	@$(NPX) tsc
+	@$(NPM) start build
 
 lint: bootstrap
-	@$(NPX) eslint --config eslint.mjs vcs.ts
+	@$(NPM) start lint
 
 clean: bootstrap
-	-rm -rf dst
+	@$(NPM) start clean
 
-distclean: clean
-	-rm -rf node_modules
+distclean: bootstrap
+	@$(NPM) start distclean
 

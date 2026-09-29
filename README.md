@@ -9,9 +9,12 @@ Abstract
 
 This is a small Command-Line Interface (CLI) for managing a Git
 worktree-based workflow inside a *basedir*. The basedir directly contains
-the Git repository clone `master`, any number of Git worktrees of it,
-and a symbolic link `active`, which points to either `master` or one of
-the worktrees. Worktrees are forked from a parent branch, synchronized
+the Git repository clone (the *master worktree*, usually named `master`
+or `main`), any number of Git worktrees of it, and a symbolic link
+`active`, which points to either the master worktree or one of the
+worktrees. The master worktree is auto-detected as the directory the
+`.git` files of the worktrees point into (or, without any worktrees,
+as the single directory with a `.git` directory). Worktrees are forked from a parent branch, synchronized
 with it, and merged back into it, where Git conflicts are resolved
 semantically and safely with the help of Claude Code (`claude -p`).
 
@@ -19,54 +22,71 @@ Installation
 ------------
 
 ```
-$ npm install -g vcs
+$ npm install -g @rse/vcs
 ```
 
 Usage
 -----
 
 ```
-$ vcs init     [-d <basedir>] -r <repo-url>
-$ vcs active   [-d <basedir>]
-$ vcs activate [-d <basedir>] <worktree>
-$ vcs fork     [-d <basedir>] [-b <branch>] <worktree> [<parent-branch>]
-$ vcs sync     [-d <basedir>] [-s] <worktree>
-$ vcs merge    [-d <basedir>] [-m merge|rebase|squash] [-s] <worktree>
-$ vcs resolve  [-d <basedir>] [-s] <worktree>
-$ vcs destroy  [-d <basedir>] <worktree>
+$ vcs init     [-v <num>] [-d <basedir>] [-r <repo-url>]
+$ vcs active   [-v <num>] [-d <basedir>]
+$ vcs activate [-v <num>] [-d <basedir>] [<worktree>]
+$ vcs fork     [-v <num>] [-d <basedir>] [-b <branch>] <worktree> [<parent-branch>]
+$ vcs sync     [-v <num>] [-d <basedir>] [-s] [<worktree>]
+$ vcs merge    [-v <num>] [-d <basedir>] [-m merge|rebase|squash] [-s] [<worktree>]
+$ vcs resolve  [-v <num>] [-d <basedir>] [-s] [<worktree>]
+$ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
 ```
 
+- `-v <num>`, `--verbose <num>`<br/>
+  Verbosity level: `0` (default) prints nothing (except errors), `1`
+  prints information and every executed command (as `$ <command>`),
+  and `2` additionally prints a brief comment (as `# <comment>`)
+  before every executed command.
 - `-d <basedir>`, `--basedir <basedir>`<br/>
   Base directory. By default, it is auto-detected as the current
   directory or the nearest parent directory containing an `active`
   symbolic link (for `init`: the current directory).
-- `init -r <repo-url>`<br/>
+- `init [-r <repo-url>]`<br/>
   Create the basedir with a clone of the Git repository `<repo-url>`
-  in `master` and activate `master`.
+  in the master worktree, named after the default branch of the
+  repository, and activate it. If a master worktree already exists,
+  `-r` has to be omitted and the existing master worktree is taken as is.
 - `active`<br/>
   Show the active worktree.
-- `activate <worktree>`<br/>
-  Activate the worktree by re-pointing the `active` symbolic link.
+- `activate [<worktree>]`<br/>
+  Activate the worktree (default: the worktree containing the current
+  directory, determined via its Git root) by re-pointing the `active`
+  symbolic link.
 - `fork [-b <branch>] <worktree> [<parent-branch>]`<br/>
   Create the worktree with the new branch `<branch>` (default:
   `<worktree>`), based on the parent branch `<parent-branch>` (default:
   the branch of the active worktree). The parent branch is recorded for
   `sync`, `merge`, and `destroy`.
-- `sync [-s] <worktree>`<br/>
+- `sync [-s] [<worktree>]`<br/>
   Fetch `origin`, fast-forward the parent branch, and rebase the
-  worktree onto it, resolving conflicts. On unresolvable conflicts, the
-  rebase is left in progress for manual resolution.
-- `merge [-m merge|rebase|squash] [-s] <worktree>`<br/>
-  Merge the worktree into its parent branch with a merge commit
-  (`merge`, default), a rebase and fast-forward (`rebase`), or a single
-  squashed commit (`squash`), resolving conflicts. On unresolvable
-  conflicts, the merge is aborted.
-- `resolve [-s] <worktree>`<br/>
-  Resolve the conflicts in the worktree and continue its in-progress
-  operation.
+  worktree (default: the worktree containing the current directory) onto
+  it, resolving conflicts. If the worktree is already up-to-date with
+  the parent branch, nothing else happens. Uncommitted changes
+  (including untracked files) are stashed before and restored after the
+  rebase, resolving conflicts, too. On unresolvable conflicts, the
+  rebase or restoration is left in progress for manual resolution.
+- `merge [-m merge|rebase|squash] [-s] [<worktree>]`<br/>
+  Merge the worktree (default: the worktree containing the current
+  directory) into its parent branch with a merge commit (`merge`,
+  default), a rebase and fast-forward (`rebase`), or a single squashed
+  commit (`squash`), resolving conflicts. On unresolvable conflicts, the
+  merge is aborted. Uncommitted changes (including untracked files) of
+  the worktree of the parent branch are stashed before and restored
+  after the merge, resolving conflicts, too.
+- `resolve [-s] [<worktree>]`<br/>
+  Resolve the conflicts in the worktree (default: the worktree containing
+  the current directory) and continue its in-progress operation.
 - `destroy <worktree>`<br/>
   Remove the worktree and its branch, if the branch has landed on its
-  parent branch. If the worktree was active, `master` is activated.
+  parent branch. If the worktree was active, the master worktree is
+  activated.
 - `-s`, `--safe`<br/>
   Never touch non-content conflicts (binary, submodule, modify/delete,
   rename, delete/delete), but always escalate them. Without this option,

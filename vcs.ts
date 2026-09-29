@@ -35,7 +35,7 @@ import chalk               from "chalk"
 /*  type definitions  */
 type Operation  = "merge" | "rebase" | "cherry-pick" | "revert" | "none"
 type Verdict    = "NONE" | "RESOLVED" | "PARTIAL"
-type Conflict   = { file: string, kind: string }
+type Conflict   = { file: string, kind: "content" | "binary" | "submodule" | "rename" | "modify/delete" | "delete/delete" }
 type Escalation = { file: string, lines: string, kind: string, ours: string, theirs: string, reason: string }
 type Resolution = { verdict: Verdict, operation: Operation, escalations: Escalation[], backupDir: string }
 type AIResult   = {
@@ -43,41 +43,55 @@ type AIResult   = {
     touched: string[]
 }
 
+/*  verbosity level (0: quiet, 1: information and commands, 2: additionally command comments)  */
+let verbose = 0
+
 /*  output information  */
 const info = (msg: string) => {
-    process.stderr.write(`${chalk.blue("vcs:")} ${msg}\n`)
+    if (verbose >= 1)
+        process.stderr.write(`${chalk.blue("vcs:")} ${msg}\n`)
+}
+
+/*  output a command (preceded by its comment) to be executed  */
+const trace = (cmd: string, args: string[], what: string) => {
+    if (verbose >= 2)
+        process.stderr.write(`# ${what}\n`)
+    if (verbose >= 1) {
+        const quote = (arg: string) => /^[A-Za-z0-9_.,:/@=+%^{}-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, "'\\''")}'`
+        process.stderr.write(`${chalk.blue(`$ ${[ cmd, ...args ].map(quote).join(" ")}`)}\n`)
+    }
 }
 
 /*  execute a Git command (without and with failing on errors)  */
-const git = (dir: string, args: string[]) =>
-    execa("git", [ "-C", dir, ...args ], { reject: false, stdin: "ignore" })
-const gitOK = async (dir: string, args: string[]) => {
-    const result = await git(dir, args)
+const git = (dir: string, args: string[], what: string) => {
+    trace("git", [ "-C", dir, ...args ], what)
+    return execa("git", [ "-C", dir, ...args ], { reject: false, stdin: "ignore" })
+}
+const gitOK = async (dir: string, args: string[], what: string) => {
+    const result = await git(dir, args, what)
     if (result.failed)
         throw new Error(`command "git ${args.join(" ")}" failed: ${(result.stderr || result.stdout).trim()}`)
     return result.stdout
 }
 
+/*  check for existing path  */
+const exists = (p: string) =>
+    fs.promises.access(p).then(() => true, () => false)
+
 /*  check for symbolic link  */
-const isSymlink = (p: string) => {
-    try {
-        return fs.lstatSync(p).isSymbolicLink()
-    }
-    catch {
-        return false
-    }
-}
+const isSymlink = (p: string) =>
+    fs.promises.lstat(p).then((stat) => stat.isSymbolicLink(), () => false)
 
 /*  determine basedir (explicitly given or auto-detected from CWD upwards)  */
-const findBasedir = (basedir?: string) => {
+const findBasedir = async (basedir?: string) => {
     if (basedir !== undefined) {
         basedir = path.resolve(basedir)
-        if (!isSymlink(path.join(basedir, "active")))
+        if (!(await isSymlink(path.join(basedir, "active"))))
             throw new Error(`no "active" symlink found in basedir "${basedir}"`)
         return basedir
     }
     let dir = process.cwd()
-    while (!isSymlink(path.join(dir, "active"))) {
+    while (!(await isSymlink(path.join(dir, "active")))) {
         const parent = path.dirname(dir)
         if (parent === dir)
             throw new Error("no basedir found (no \"active\" symlink in current or any parent directory)")
@@ -87,25 +101,76 @@ const findBasedir = (basedir?: string) => {
 }
 
 /*  determine directory of a worktree under basedir  */
-const worktreeDir = (basedir: string, name: string, mustExist = true) => {
-    if (!name.match(/^[A-Za-z0-9][A-Za-z0-9._-]*$/) || name === "active")
+const worktreeDir = async (basedir: string, name: string, mustExist = true) => {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) || name === "active")
         throw new Error(`invalid worktree name "${name}"`)
     const dir = path.join(basedir, name)
-    if (mustExist && !fs.existsSync(path.join(dir, ".git")))
+    if (mustExist && !(await exists(path.join(dir, ".git"))))
         throw new Error(`no worktree "${name}" found under basedir "${basedir}"`)
     return dir
 }
 
+/*  detect name of the master worktree under a (not yet initialized) basedir:
+    the directory the ".git" files of the linked worktrees point into, or (if there
+    are no linked worktrees yet) the single directory with a ".git" directory  */
+const findMaster = async (basedir: string) => {
+    const real    = await fs.promises.realpath(basedir).catch(() => basedir)
+    const linked  = new Set<string>()
+    const primary = new Set<string>()
+    const entries = await fs.promises.readdir(basedir, { withFileTypes: true }).catch(() => [])
+    for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name === "active")
+            continue
+        const dotgit = path.join(basedir, entry.name, ".git")
+        const stat   = await fs.promises.stat(dotgit).catch(() => null)
+        if (stat === null)
+            continue
+        if (stat.isDirectory())
+            primary.add(entry.name)
+        else if (stat.isFile()) {
+            const m = (await fs.promises.readFile(dotgit, "utf8")).match(/^gitdir:\s*(.+?)\s*$/m)
+            if (m === null)
+                continue
+            const unresolved = path.resolve(path.join(basedir, entry.name), m[1])
+            const gitdir     = await fs.promises.realpath(unresolved).catch(() => unresolved)
+            const rel        = path.relative(real, gitdir)
+            if (rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel))
+                linked.add(rel.split(path.sep)[0])
+        }
+    }
+    const names = linked.size > 0 ? linked : primary
+    if (names.size > 1)
+        throw new Error(`ambiguous master worktree under basedir "${basedir}": ` +
+            `${[ ...names ].map((n) => `"${n}"`).join(", ")}`)
+    return names.size === 0 ? null : [ ...names ][0]
+}
+
+/*  determine name of the master worktree under an initialized basedir
+    (Git always lists the main worktree first)  */
+const masterName = async (basedir: string) => {
+    const list = await gitOK(path.join(basedir, "active"), [ "worktree", "list", "--porcelain" ], "list worktrees to determine the master worktree")
+    const main = list.match(/^worktree (.+)$/m)?.[1]
+    if (main === undefined)
+        throw new Error(`no master worktree found under basedir "${basedir}"`)
+    const rel = path.relative(await fs.promises.realpath(basedir), await fs.promises.realpath(main))
+    if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel) || rel.includes(path.sep))
+        throw new Error(`master worktree "${main}" not located directly under basedir "${basedir}"`)
+    return rel
+}
+
 /*  atomically re-point the "active" symlink  */
-const setActive = (basedir: string, name: string) => {
+const setActive = async (basedir: string, name: string) => {
     const tmp = path.join(basedir, `.active.${process.pid}`)
-    fs.symlinkSync(name, tmp)
-    fs.renameSync(tmp, path.join(basedir, "active"))
+    await fs.promises.symlink(name, tmp)
+    await fs.promises.rename(tmp, path.join(basedir, "active")).catch(async (err: unknown) => {
+        await fs.promises.rm(tmp, { force: true })
+        throw err
+    })
 }
 
 /*  determine checked-out branch of a worktree  */
 const currentBranch = async (dir: string) => {
-    const branch = await gitOK(dir, [ "branch", "--show-current" ])
+    const branch = await gitOK(dir, [ "branch", "--show-current" ], "determine the checked-out branch")
     if (branch === "")
         throw new Error(`worktree "${dir}" has no checked-out branch (detached HEAD)`)
     return branch
@@ -113,7 +178,7 @@ const currentBranch = async (dir: string) => {
 
 /*  determine recorded parent branch of a branch  */
 const parentBranch = async (dir: string, branch: string) => {
-    const result = await git(dir, [ "config", "--get", `branch.${branch}.vcsParent` ])
+    const result = await git(dir, [ "config", "--get", `branch.${branch}.vcsParent` ], "determine the recorded parent branch")
     if (result.failed || result.stdout === "")
         throw new Error(`no parent branch recorded for branch "${branch}"`)
     return result.stdout
@@ -122,9 +187,9 @@ const parentBranch = async (dir: string, branch: string) => {
 /*  determine worktree directory where a branch is checked out (or empty)  */
 const branchDir = async (dir: string, branch: string) => {
     let worktree = ""
-    for (const line of (await gitOK(dir, [ "worktree", "list", "--porcelain" ])).split("\n")) {
+    for (const line of (await gitOK(dir, [ "worktree", "list", "--porcelain" ], "list worktrees to find where the branch is checked out")).split("\n")) {
         if (line.startsWith("worktree "))
-            worktree = line.substring(9)
+            worktree = line.slice("worktree ".length)
         else if (line === `branch refs/heads/${branch}`)
             return worktree
     }
@@ -137,26 +202,26 @@ const theirsRefs: [ string, Operation ][] = [
     [ "CHERRY_PICK_HEAD", "cherry-pick" ], [ "REVERT_HEAD", "revert" ]
 ]
 const operation = async (dir: string): Promise<Operation> => {
-    for (const [ ref, op ] of theirsRefs)
-        if (!(await git(dir, [ "rev-parse", "--verify", "--quiet", ref ])).failed)
+    const states: [ string, Operation ][] = [ ...theirsRefs, [ "rebase-merge", "rebase" ], [ "rebase-apply", "rebase" ] ]
+    const paths = (await gitOK(dir, [ "rev-parse", ...states.flatMap(([ state ]) => [ "--git-path", state ]) ],
+        "determine paths of the in-progress operation state files")).split("\n")
+    for (const [ i, [ , op ] ] of states.entries())
+        if (await exists(path.resolve(dir, paths[i])))
             return op
-    for (const state of [ "rebase-merge", "rebase-apply" ])
-        if (fs.existsSync(path.resolve(dir, await gitOK(dir, [ "rev-parse", "--git-path", state ]))))
-            return "rebase"
     return "none"
 }
 
 /*  check for unmerged files  */
 const hasUnmerged = async (dir: string) =>
-    (await gitOK(dir, [ "diff", "--name-only", "--diff-filter=U" ])) !== ""
+    (await gitOK(dir, [ "diff", "--name-only", "--diff-filter=U" ], "list unmerged files")) !== ""
 
 /*  check for conflict markers in a file  */
 const hasMarkers = (file: string) =>
-    fs.existsSync(file) && /^(<{7}|\|{7}|>{7})( |$)/m.test(fs.readFileSync(file, "utf8"))
+    fs.promises.readFile(file, "utf8").then((data) => /^(<{7}|\|{7}|>{7})( |$)/m.test(data), () => false)
 
 /*  ensure a worktree has neither uncommitted changes nor an in-progress operation  */
 const ensureClean = async (dir: string) => {
-    if ((await gitOK(dir, [ "status", "--porcelain" ])) !== "")
+    if ((await gitOK(dir, [ "status", "--porcelain" ], "check for uncommitted changes")) !== "")
         throw new Error(`worktree "${dir}" has uncommitted changes`)
     const op = await operation(dir)
     if (op !== "none")
@@ -165,21 +230,26 @@ const ensureClean = async (dir: string) => {
 
 /*  fast-forward a local branch to its "origin" counterpart  */
 const refreshBranch = async (dir: string, branch: string) => {
-    if ((await git(dir, [ "remote", "get-url", "origin" ])).failed)
+    if ((await git(dir, [ "remote", "get-url", "origin" ], "check for an \"origin\" remote")).failed)
         return
-    await gitOK(dir, [ "fetch", "--quiet", "origin" ])
+    await gitOK(dir, [ "fetch", "--quiet", "origin" ], "fetch changes from \"origin\"")
     const remote = `refs/remotes/origin/${branch}`
-    if ((await git(dir, [ "rev-parse", "--verify", "--quiet", remote ])).failed)
+    const counts = await git(dir, [ "rev-list", "--left-right", "--count", `refs/heads/${branch}...${remote}` ],
+        "count the commits the branch is ahead of and behind the remote-tracking branch")
+    if (counts.failed)
         return
-    if ((await git(dir, [ "merge-base", "--is-ancestor", branch, remote ])).failed) {
+    const [ ahead, behind ] = counts.stdout.split("\t").map(Number)
+    if (behind === 0)
+        return
+    if (ahead > 0) {
         info(`branch "${branch}" diverged from "origin/${branch}" -- not fast-forwarded`)
         return
     }
     const bdir = await branchDir(dir, branch)
     if (bdir !== "")
-        await gitOK(bdir, [ "merge", "--quiet", "--ff-only", remote ])
+        await gitOK(bdir, [ "merge", "--quiet", "--ff-only", remote ], "fast-forward the checked-out branch")
     else
-        await gitOK(dir, [ "update-ref", `refs/heads/${branch}`, remote ])
+        await gitOK(dir, [ "update-ref", `refs/heads/${branch}`, remote ], "fast-forward the not checked-out branch")
 }
 
 /*  JSON schema of the AI resolution result  */
@@ -244,8 +314,8 @@ Unmodified backups of all conflicted files exist below "${backupDir}"
 
 Procedure:
 
-1.  Determine the intents of both sides by running "git log --oneline -n 10 HEAD"
-    ${theirs !== "" ? `and "git log --oneline -n 10 ${theirs}" and "git show --stat ${theirs}"` : ""}.
+1.  Determine the intents of both sides by running "git log --oneline -n 10 HEAD"${theirs !== "" ? `
+    and "git log --oneline -n 10 ${theirs}" and "git show --stat ${theirs}"` : ""}.
 
 2.  For every file of kind "content": split it into its conflict hunks, each
     consisting of the "ours" section (after "<<<<<<<"), the optional "base"
@@ -270,8 +340,8 @@ Procedure:
     the same file.
 
 3.  ${safe ?
-        "There are no non-content conflicts to resolve." :
-        `For every file of kind "modify/delete" or "rename": resolve it only if
+    "There are no non-content conflicts to resolve." :
+    `For every file of kind "modify/delete" or "rename": resolve it only if
     the intent is unambiguous and no change gets lost. If the deleting side
     moved the content (e.g., renamed or split the file), port the modification
     of the other side completely into the new location, list that new location
@@ -301,7 +371,7 @@ Procedure:
     "ours", a one-line intent of "theirs", and a one-line reason). Keep all
     texts short.
 `
-    const result = await execa("claude", [
+    const args = [
         "-p", prompt,
         "--output-format", "json",
         "--json-schema", JSON.stringify(aiSchema),
@@ -311,71 +381,104 @@ Procedure:
         "--permission-mode", "dontAsk",
         "--add-dir", backupDir,
         "--no-session-persistence"
-    ], { cwd: root, reject: false, stdin: "ignore" })
-    if (result.failed)
+    ]
+    trace("claude", args.map((arg, i) => i === 1 ? "<prompt>" : i === 5 ? "<schema>" : arg),
+        "semantically resolve the conflicted files via Claude")
+    const result = await execa("claude", args, { cwd: root, reject: false, stdin: "ignore" })
+    if (result.failed) {
+        info(`Claude invocation failed: ${(result.stderr || result.stdout).trim()}`)
         return null
+    }
     for (const line of result.stdout.split("\n")) {
         if (!line.startsWith("{"))
             continue
         try {
-            const response = JSON.parse(line)
+            const response: { type?: string, is_error?: boolean, structured_output?: AIResult } = JSON.parse(line)
             if (response.type === "result" && !response.is_error && response.structured_output)
-                return response.structured_output as AIResult
+                return response.structured_output
         }
         catch {
-            continue
+            /*  ignore unparsable output lines  */
         }
     }
     return null
 }
 
-/*  resolve the conflicts of the in-progress operation of a worktree  */
-const resolveConflicts = async (dir: string, safe: boolean): Promise<Resolution> => {
-    const root   = await gitOK(dir, [ "rev-parse", "--show-toplevel" ])
-    const gitDir = await gitOK(dir, [ "rev-parse", "--absolute-git-dir" ])
-    const op     = await operation(root)
-    let theirs   = theirsRefs.find(([ , o ]) => o === op)?.[0] ?? ""
-    const other  = theirs !== "" ? await git(root, [ "rev-parse", "--verify", "--quiet", theirs ]) : null
-    if (other === null || other.failed)
-        theirs = ""
-
-    /*  determine and classify unmerged files  */
+/*  determine and classify the unmerged files of a worktree  */
+const classifyConflicts = async (root: string) => {
     const conflicts: Conflict[] = []
-    const status = await gitOK(root, [ "-c", "core.quotepath=off", "status", "--porcelain=v1", "-z" ])
+    const status = await gitOK(root, [ "-c", "core.quotepath=off", "status", "--porcelain=v1", "-z" ], "list the status of all files")
     for (const entry of status.split("\0")) {
         const m = entry.match(/^(UU|AA|UD|DU|AU|UA|DD) (.+)$/)
         if (m === null)
             continue
         const [ , code, file ] = m
-        let kind
+        let kind: Conflict["kind"]
         if (code === "DD")
             kind = "delete/delete"
         else if (code === "UD" || code === "DU")
             kind = "modify/delete"
         else if (code === "AU" || code === "UA")
             kind = "rename"
-        else if ((await gitOK(root, [ "ls-files", "-u", "--", file ])).match(/^160000 /m))
+        else if (/^160000 /m.test(await gitOK(root, [ "ls-files", "-u", "--", file ], "check whether the unmerged file is a submodule")))
             kind = "submodule"
         else
-            kind = hasMarkers(path.join(root, file)) ? "content" : "binary"
+            kind = (await hasMarkers(path.join(root, file))) ? "content" : "binary"
         conflicts.push({ file, kind })
     }
+    return conflicts
+}
 
-    /*  short-circuit processing if nothing is to be resolved  */
-    const head = await gitOK(root, [ "rev-parse", "HEAD" ])
-    const backupDir = path.join(gitDir, "vcs-resolve", `${head}-${theirs !== "" ? other!.stdout : "none"}`)
-    if (conflicts.length === 0)
-        return { verdict: "NONE", operation: op, escalations: [], backupDir }
-
-    /*  back up files (never overwriting the more original state of an earlier run)  */
+/*  back up conflicted files (never overwriting the more original state of an earlier run)  */
+const backupFiles = async (root: string, backupDir: string, conflicts: Conflict[]) => {
     for (const c of conflicts) {
         const src = path.join(root, c.file)
         const dst = path.join(backupDir, c.file)
-        if (fs.existsSync(src) && !fs.existsSync(dst)) {
-            fs.mkdirSync(path.dirname(dst), { recursive: true })
-            fs.copyFileSync(src, dst)
+        if ((await exists(src)) && !(await exists(dst))) {
+            await fs.promises.mkdir(path.dirname(dst), { recursive: true })
+            await fs.promises.copyFile(src, dst)
         }
     }
+}
+
+/*  determine the side which changed an unmerged file the other side left unchanged  */
+const changedSide = async (root: string, file: string) => {
+    const stages: Record<string, { mode: string, oid: string }> = {}
+    for (const line of (await gitOK(root, [ "ls-files", "-u", "--", file ], "list the stages of the unmerged file")).split("\n")) {
+        const m = line.match(/^(\d+) ([0-9a-f]+) ([123])\t/)
+        if (m !== null)
+            stages[m[3]] = { mode: m[1], oid: m[2] }
+    }
+    const base = stages["1"]?.oid
+    if (base !== undefined && stages["2"]?.oid === base && stages["3"] !== undefined)
+        return { ...stages["3"], flag: "--theirs" }
+    if (base !== undefined && stages["3"]?.oid === base && stages["2"] !== undefined)
+        return { ...stages["2"], flag: "--ours" }
+    return undefined
+}
+
+/*  resolve the conflicts of the in-progress operation of a worktree  */
+const resolveConflicts = async (dir: string, safe: boolean): Promise<Resolution> => {
+    const root   = await gitOK(dir, [ "rev-parse", "--show-toplevel" ], "determine the root directory of the worktree")
+    const gitDir = await gitOK(dir, [ "rev-parse", "--absolute-git-dir" ], "determine the Git directory of the worktree")
+    const op     = await operation(root)
+    let theirs   = theirsRefs.find(([ , o ]) => o === op)?.[0] ?? ""
+    const other  = theirs !== "" ? await git(root, [ "rev-parse", "--verify", "--quiet", theirs ], "determine the commit of the other side") : null
+    const oid    = other !== null && !other.failed ? other.stdout : ""
+    if (oid === "")
+        theirs = ""
+
+    /*  determine and classify unmerged files  */
+    const conflicts = await classifyConflicts(root)
+
+    /*  short-circuit processing if nothing is to be resolved  */
+    const head      = await gitOK(root, [ "rev-parse", "HEAD" ], "determine the current commit")
+    const backupDir = path.join(gitDir, "vcs-resolve", `${head}-${oid !== "" ? oid : "none"}`)
+    if (conflicts.length === 0)
+        return { verdict: "NONE", operation: op, escalations: [], backupDir }
+
+    /*  back up files  */
+    await backupFiles(root, backupDir, conflicts)
 
     /*  resolve non-content conflicts deterministically and collect the remaining ones  */
     const escalations: Escalation[] = []
@@ -389,25 +492,16 @@ const resolveConflicts = async (dir: string, safe: boolean): Promise<Resolution>
         else if (safe)
             escalate(c, "non-content conflict not touched in safe mode")
         else if (c.kind === "delete/delete")
-            await gitOK(root, [ "rm", "--quiet", "--", c.file ])
+            await gitOK(root, [ "rm", "--quiet", "--", c.file ], "remove the file deleted on both sides")
         else if (c.kind === "binary" || c.kind === "submodule") {
             /*  take the changed side if the other side left it unchanged  */
-            const stages: Record<string, { mode: string, oid: string }> = {}
-            for (const line of (await gitOK(root, [ "ls-files", "-u", "--", c.file ])).split("\n")) {
-                const m = line.match(/^(\d+) ([0-9a-f]+) ([123])\t/)
-                if (m !== null)
-                    stages[m[3]] = { mode: m[1], oid: m[2] }
-            }
-            const base = stages["1"]?.oid
-            const side = base === undefined ? undefined :
-                stages["2"]?.oid === base ? stages["3"] :
-                stages["3"]?.oid === base ? stages["2"] : undefined
+            const side = await changedSide(root, c.file)
             if (side === undefined)
                 escalate(c, "both sides changed differently")
             else if (c.kind === "submodule")
-                await gitOK(root, [ "update-index", "--cacheinfo", `${side.mode},${side.oid},${c.file}` ])
+                await gitOK(root, [ "update-index", "--cacheinfo", `${side.mode},${side.oid},${c.file}` ], "take the submodule commit of the changed side")
             else {
-                await gitOK(root, [ "checkout", side === stages["2"] ? "--ours" : "--theirs", "--", c.file ])
+                await gitOK(root, [ "checkout", side.flag, "--", c.file ], "take the file of the changed side")
                 toStage.push(c.file)
             }
         }
@@ -423,44 +517,48 @@ const resolveConflicts = async (dir: string, safe: boolean): Promise<Resolution>
             /*  restore all files from their backups  */
             for (const c of toAI) {
                 const backup = path.join(backupDir, c.file)
-                if (fs.existsSync(backup))
-                    fs.copyFileSync(backup, path.join(root, c.file))
+                if (await exists(backup))
+                    await fs.promises.copyFile(backup, path.join(root, c.file))
                 escalate(c, "AI resolution failed")
             }
         }
         else {
             for (const c of toAI) {
                 const file = path.join(root, c.file)
-                const r = result.files.find((f) => f.file === c.file)
+                const r    = result.files.find((f) => f.file === c.file)
                 if (r === undefined)
                     escalate(c, "no resolution reported")
-                else if (!r.resolved || r.escalations.length > 0)
-                    escalations.push(...(r.escalations.length > 0 ? r.escalations :
-                        [ { file: c.file, lines: "*", kind: c.kind, ours: "", theirs: "", reason: "not resolved" } ]))
-                else if (r.remove)
-                    await gitOK(root, [ "rm", "--quiet", "--ignore-unmatch", "--", c.file ])
-                else if (!fs.existsSync(file))
+                else if (r.escalations.length > 0)
+                    escalations.push(...r.escalations)
+                else if (!r.resolved)
+                    escalate(c, "not resolved")
+                else if (r.remove && c.kind !== "content")
+                    await gitOK(root, [ "rm", "--quiet", "--ignore-unmatch", "--", c.file ], "remove the file moved away by the AI resolution")
+                else if (!(await exists(file)))
                     escalate(c, "resolved file is missing")
-                else if (hasMarkers(file))
+                else if (await hasMarkers(file))
                     escalate(c, "leftover conflict markers")
                 else
                     toStage.push(c.file)
             }
             for (const file of result.touched) {
                 const abs = path.resolve(root, file)
-                if (abs.startsWith(root + path.sep) && fs.existsSync(abs) && !hasMarkers(abs))
-                    toStage.push(path.relative(root, abs))
+                const rel = path.relative(root, abs)
+                if (!abs.startsWith(root + path.sep) || toAI.some((c) => c.file === rel))
+                    continue
+                if ((await exists(abs)) && !(await hasMarkers(abs)))
+                    toStage.push(rel)
             }
         }
     }
 
     /*  stage fully resolved files  */
     if (toStage.length > 0)
-        await gitOK(root, [ "add", "--", ...toStage ])
+        await gitOK(root, [ "add", "--", ...toStage ], "stage the resolved files")
 
     /*  determine verdict (keeping backups in case of escalations)  */
     if (escalations.length === 0) {
-        fs.rmSync(backupDir, { recursive: true, force: true })
+        await fs.promises.rm(backupDir, { recursive: true, force: true })
         return { verdict: "RESOLVED", operation: op, escalations, backupDir: "" }
     }
     return { verdict: "PARTIAL", operation: op, escalations, backupDir }
@@ -473,7 +571,7 @@ const resolveAndContinue = async (dir: string, safe: boolean): Promise<Resolutio
         const res = await resolveConflicts(dir, safe)
         if (res.verdict !== "RESOLVED" || res.operation === "none")
             return res
-        const result = await git(dir, [ "-c", "core.editor=true", res.operation, "--continue" ])
+        const result = await git(dir, [ "-c", "core.editor=true", res.operation, "--continue" ], "continue the in-progress operation")
         if (!result.failed)
             return res
         if (!(await hasUnmerged(dir)))
@@ -483,7 +581,9 @@ const resolveAndContinue = async (dir: string, safe: boolean): Promise<Resolutio
 }
 
 /*  report the escalated conflicts  */
-const report = (res: Resolution) => {
+const report = async (res: Resolution) => {
+    if (verbose < 1)
+        return
     for (const e of res.escalations) {
         process.stderr.write(`${chalk.yellow("▶")} ${e.file}:${e.lines} (${e.kind}): ${e.reason}\n`)
         if (e.ours !== "")
@@ -491,25 +591,54 @@ const report = (res: Resolution) => {
         if (e.theirs !== "")
             process.stderr.write(`    ${chalk.grey("theirs:")} ${e.theirs}\n`)
     }
-    if (res.escalations.length > 0 && res.backupDir !== "" && fs.existsSync(res.backupDir))
+    if (res.escalations.length > 0 && res.backupDir !== "" && (await exists(res.backupDir)))
         process.stderr.write(`    ${chalk.grey("backups:")} ${res.backupDir}\n`)
 }
 
 /*  rebase a worktree onto its parent branch, resolving conflicts  */
 const rebase = async (dir: string, parent: string, safe: boolean): Promise<Resolution | null> => {
-    const result = await git(dir, [ "rebase", "--quiet", parent ])
+    const result = await git(dir, [ "rebase", "--quiet", parent ], "rebase onto the parent branch")
     if (!result.failed)
         return null
     if (!(await hasUnmerged(dir))) {
-        await git(dir, [ "rebase", "--abort" ])
+        await git(dir, [ "rebase", "--abort" ], "abort the failed rebase")
         throw new Error(`rebase onto "${parent}" failed: ${(result.stderr || result.stdout).trim()}`)
     }
     return resolveAndContinue(dir, safe)
 }
 
+/*  stash uncommitted changes of a worktree (including untracked files)  */
+const stashPush = async (dir: string, message: string) => {
+    if ((await gitOK(dir, [ "status", "--porcelain" ], "check for uncommitted changes")) === "")
+        return false
+    await gitOK(dir, [ "stash", "push", "--quiet", "--include-untracked", "--message", message ], "stash the uncommitted changes")
+    info(`uncommitted changes of worktree "${path.basename(dir)}" stashed`)
+    return true
+}
+
+/*  restore stashed changes of a worktree, resolving conflicts
+    (returns the resolution in case of escalated conflicts only)  */
+const stashPop = async (dir: string, safe: boolean): Promise<Resolution | null> => {
+    const result = await git(dir, [ "stash", "pop", "--quiet" ], "restore the stashed changes")
+    if (result.failed) {
+        if (!(await hasUnmerged(dir)))
+            throw new Error(`failed to restore stashed changes of worktree "${path.basename(dir)}" (kept in stash): ` +
+                `${(result.stderr || result.stdout).trim()}`)
+        const res = await resolveConflicts(dir, safe)
+        if (res.verdict === "PARTIAL")
+            return res
+
+        /*  unstage restored changes and drop the (on conflicts kept) stash  */
+        await gitOK(dir, [ "reset", "--quiet" ], "unstage the restored changes")
+        await gitOK(dir, [ "stash", "drop", "--quiet" ], "drop the stash kept on conflicts")
+    }
+    info(`uncommitted changes of worktree "${path.basename(dir)}" restored`)
+    return null
+}
+
 ;(async () => {
     /*  load my own information  */
-    const packageInfo = JSON.parse(await fs.promises.readFile(new URL("../package.json", import.meta.url), "utf8"))
+    const packageInfo: { description: string, version: string } = JSON.parse(await fs.promises.readFile(new URL("../package.json", import.meta.url), "utf8"))
 
     /*  command-line option parsing  */
     const program = new Command()
@@ -521,37 +650,60 @@ const rebase = async (dir: string, parent: string, safe: boolean): Promise<Resol
 
     /*  command: init  */
     program.command("init")
-        .description("create basedir with a clone of a Git repository in \"master\"")
+        .description("create basedir with a clone of a Git repository in a master worktree (or take existing master worktree)")
         .option("-d, --basedir <basedir>", "base directory", ".")
-        .requiredOption("-r, --repo <repo-url>", "URL of the Git repository to clone")
-        .action(async (opts: { basedir: string, repo: string }) => {
+        .option("-r, --repo <repo-url>", "URL of the Git repository to clone (required if no master worktree exists)")
+        .action(async (opts: { basedir: string, repo?: string }) => {
             const basedir = path.resolve(opts.basedir)
-            if (fs.existsSync(path.join(basedir, "master")) || isSymlink(path.join(basedir, "active")))
+            const master  = await findMaster(basedir)
+            if (await isSymlink(path.join(basedir, "active")))
                 throw new Error(`basedir "${basedir}" is already initialized`)
-            fs.mkdirSync(basedir, { recursive: true })
-            await gitOK(basedir, [ "clone", "--quiet", opts.repo, "master" ])
-            setActive(basedir, "master")
-            info(`basedir "${basedir}" initialized with clone of "${opts.repo}"`)
+            if (master !== null && opts.repo !== undefined)
+                throw new Error(`option "--repo" not applicable, as master worktree "${master}" already exists`)
+            if (master !== null) {
+                /*  take existing master worktree as is  */
+                await setActive(basedir, master)
+                info(`basedir "${basedir}" initialized with existing master worktree "${master}"`)
+            }
+            else {
+                if (opts.repo === undefined)
+                    throw new Error("option \"--repo\" is required, as no master worktree exists")
+
+                /*  clone into master worktree named after the default branch of the repository  */
+                await fs.promises.mkdir(basedir, { recursive: true })
+                const head = await gitOK(basedir, [ "ls-remote", "--symref", "--", opts.repo, "HEAD" ], "determine the default branch of the repository")
+                const name = head.match(/^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m)?.[1] ?? "master"
+                const dir  = await worktreeDir(basedir, name, false)
+                if (await exists(dir))
+                    throw new Error(`directory "${dir}" already exists`)
+                await gitOK(basedir, [ "clone", "--quiet", "--", opts.repo, name ], "clone the repository into the master worktree")
+                await setActive(basedir, name)
+                info(`basedir "${basedir}" initialized with clone of "${opts.repo}" in master worktree "${name}"`)
+            }
         })
 
     /*  command: active  */
     program.command("active")
         .description("show the active worktree")
         .option("-d, --basedir <basedir>", "base directory")
-        .action((opts: { basedir?: string }) => {
-            const basedir = findBasedir(opts.basedir)
-            process.stdout.write(`${fs.readlinkSync(path.join(basedir, "active"))}\n`)
+        .action(async (opts: { basedir?: string }) => {
+            const basedir = await findBasedir(opts.basedir)
+            process.stdout.write(`${await fs.promises.readlink(path.join(basedir, "active"))}\n`)
         })
 
     /*  command: activate  */
     program.command("activate")
         .description("activate a worktree")
         .option("-d, --basedir <basedir>", "base directory")
-        .argument("<worktree>", "worktree to activate")
-        .action((worktree: string, opts: { basedir?: string }) => {
-            const basedir = findBasedir(opts.basedir)
-            worktreeDir(basedir, worktree)
-            setActive(basedir, worktree)
+        .argument("[worktree]", "worktree to activate (default: worktree of current directory)")
+        .action(async (worktree: string | undefined, opts: { basedir?: string }) => {
+            const basedir = await findBasedir(opts.basedir)
+
+            /*  default to worktree containing the current directory  */
+            if (worktree === undefined)
+                worktree = path.basename(await gitOK(process.cwd(), [ "rev-parse", "--show-toplevel" ], "determine the worktree of the current directory"))
+            await worktreeDir(basedir, worktree)
+            await setActive(basedir, worktree)
         })
 
     /*  command: fork  */
@@ -562,20 +714,21 @@ const rebase = async (dir: string, parent: string, safe: boolean): Promise<Resol
         .argument("<worktree>", "worktree to create")
         .argument("[parent-branch]", "parent branch (default: branch of active worktree)")
         .action(async (worktree: string, parent: string | undefined, opts: { basedir?: string, branch?: string }) => {
-            const basedir = findBasedir(opts.basedir)
-            if (worktree === "master")
-                throw new Error("worktree name \"master\" is reserved")
-            const dir = worktreeDir(basedir, worktree, false)
-            if (fs.existsSync(dir))
+            const basedir = await findBasedir(opts.basedir)
+            const name    = await masterName(basedir)
+            if (worktree === name)
+                throw new Error(`worktree name "${name}" is reserved for master worktree`)
+            const dir = await worktreeDir(basedir, worktree, false)
+            if (await exists(dir))
                 throw new Error(`directory "${dir}" already exists`)
-            const master = path.join(basedir, "master")
+            const master = path.join(basedir, name)
             if (parent === undefined)
-                parent = await currentBranch(fs.realpathSync(path.join(basedir, "active")))
-            if ((await git(master, [ "rev-parse", "--verify", "--quiet", `refs/heads/${parent}` ])).failed)
+                parent = await currentBranch(await fs.promises.realpath(path.join(basedir, "active")))
+            if ((await git(master, [ "rev-parse", "--verify", "--quiet", `refs/heads/${parent}` ], "check for the existence of the parent branch")).failed)
                 throw new Error(`parent branch "${parent}" does not exist`)
             const branch = opts.branch ?? worktree
-            await gitOK(master, [ "worktree", "add", "--quiet", "-b", branch, dir, parent ])
-            await gitOK(master, [ "config", `branch.${branch}.vcsParent`, parent ])
+            await gitOK(master, [ "worktree", "add", "--quiet", "-b", branch, dir, parent ], "create the worktree with a new branch")
+            await gitOK(master, [ "config", `branch.${branch}.vcsParent`, parent ], "record the parent branch")
             info(`worktree "${worktree}" created with branch "${branch}" (parent branch "${parent}")`)
         })
 
@@ -584,19 +737,53 @@ const rebase = async (dir: string, parent: string, safe: boolean): Promise<Resol
         .description("rebase a worktree onto its (refreshed) parent branch")
         .option("-d, --basedir <basedir>", "base directory")
         .option("-s, --safe", "never touch non-content conflicts", false)
-        .argument("<worktree>", "worktree to synchronize")
-        .action(async (worktree: string, opts: { basedir?: string, safe: boolean }) => {
-            const basedir = findBasedir(opts.basedir)
-            const dir     = worktreeDir(basedir, worktree)
+        .argument("[worktree]", "worktree to synchronize (default: worktree of current directory)")
+        .action(async (worktree: string | undefined, opts: { basedir?: string, safe: boolean }) => {
+            const basedir = await findBasedir(opts.basedir)
+
+            /*  default to worktree containing the current directory  */
+            if (worktree === undefined)
+                worktree = path.basename(await gitOK(process.cwd(), [ "rev-parse", "--show-toplevel" ], "determine the worktree of the current directory"))
+            const dir     = await worktreeDir(basedir, worktree)
             const branch  = await currentBranch(dir)
             const parent  = await parentBranch(dir, branch)
-            await ensureClean(dir)
+            const op      = await operation(dir)
+            if (op !== "none")
+                throw new Error(`worktree "${dir}" has an in-progress ${op} operation`)
+
+            /*  refresh parent branch and short-circuit processing if already up-to-date  */
             await refreshBranch(dir, parent)
-            const res = await rebase(dir, parent, opts.safe)
+            if (!(await git(dir, [ "merge-base", "--is-ancestor", parent, "HEAD" ], "check whether the parent branch is already contained")).failed) {
+                info(`worktree "${worktree}" already up-to-date with parent branch "${parent}"`)
+                return
+            }
+
+            /*  stash uncommitted changes (including untracked files)  */
+            const stashed   = await stashPush(dir, "vcs sync")
+            const stashNote = stashed ? " -- afterwards, run \"git stash pop\" to restore the stashed changes" : ""
+
+            /*  rebase onto parent branch  */
+            const res = await rebase(dir, parent, opts.safe).catch(async (err: unknown) => {
+                if (stashed && (await operation(dir)) === "none")
+                    await gitOK(dir, [ "stash", "pop", "--quiet" ], "restore the stashed changes after failure")
+                else if (stashed)
+                    info(`uncommitted changes remain stashed${stashNote}`)
+                throw err
+            })
             if (res !== null && res.verdict === "PARTIAL") {
-                report(res)
+                await report(res)
                 info("rebase left in progress: resolve the escalated conflicts manually, " +
-                    "stage them, and run \"git rebase --continue\"")
+                    `stage them, and run "git rebase --continue"${stashNote}`)
+                process.exitCode = 1
+                return
+            }
+
+            /*  restore stashed changes, resolving conflicts  */
+            const pres = stashed ? await stashPop(dir, opts.safe) : null
+            if (pres !== null) {
+                await report(pres)
+                info("stashed changes restored with conflicts: resolve the escalated conflicts manually, " +
+                    "and run \"git reset\" and \"git stash drop\"")
                 process.exitCode = 1
                 return
             }
@@ -609,53 +796,86 @@ const rebase = async (dir: string, parent: string, safe: boolean): Promise<Resol
         .option("-d, --basedir <basedir>", "base directory")
         .addOption(new Option("-m, --mode <mode>", "merge mode").choices([ "merge", "rebase", "squash" ]).default("merge"))
         .option("-s, --safe", "never touch non-content conflicts", false)
-        .argument("<worktree>", "worktree to merge")
-        .action(async (worktree: string, opts: { basedir?: string, mode: string, safe: boolean }) => {
-            const basedir = findBasedir(opts.basedir)
-            const dir     = worktreeDir(basedir, worktree)
+        .argument("[worktree]", "worktree to merge (default: worktree of current directory)")
+        .action(async (worktree: string | undefined, opts: { basedir?: string, mode: "merge" | "rebase" | "squash", safe: boolean }) => {
+            const basedir = await findBasedir(opts.basedir)
+
+            /*  default to worktree containing the current directory  */
+            if (worktree === undefined)
+                worktree = path.basename(await gitOK(process.cwd(), [ "rev-parse", "--show-toplevel" ], "determine the worktree of the current directory"))
+            const dir     = await worktreeDir(basedir, worktree)
             const branch  = await currentBranch(dir)
             const parent  = await parentBranch(dir, branch)
             await ensureClean(dir)
             const pdir = await branchDir(dir, parent)
             if (pdir === "")
                 throw new Error(`parent branch "${parent}" is not checked out in any worktree`)
-            await ensureClean(pdir)
-            if (opts.mode === "rebase") {
-                /*  rebase onto parent branch and fast-forward parent branch  */
-                const res = await rebase(dir, parent, opts.safe)
-                if (res !== null && res.verdict === "PARTIAL") {
-                    await git(dir, [ "rebase", "--abort" ])
-                    fs.rmSync(res.backupDir, { recursive: true, force: true })
-                    report(res)
-                    throw new Error(`merge of branch "${branch}" into "${parent}" aborted due to unresolved conflicts`)
-                }
-                await gitOK(pdir, [ "merge", "--quiet", "--ff-only", branch ])
-            }
-            else {
-                /*  merge or squash branch into parent branch  */
-                const args = opts.mode === "squash" ?
-                    [ "merge", "--quiet", "--squash", branch ] :
-                    [ "merge", "--quiet", "--no-ff", "--no-edit", branch ]
-                const result = await git(pdir, args)
-                if (result.failed) {
-                    if (!(await hasUnmerged(pdir))) {
-                        await git(pdir, [ "reset", "--quiet", "--merge" ])
-                        throw new Error(`merge of branch "${branch}" into "${parent}" failed: ${(result.stderr || result.stdout).trim()}`)
-                    }
-                    const res = await resolveConflicts(pdir, opts.safe)
-                    if (res.verdict !== "RESOLVED") {
-                        await git(pdir, [ "reset", "--quiet", "--merge" ])
-                        fs.rmSync(res.backupDir, { recursive: true, force: true })
-                        report(res)
+            const op = await operation(pdir)
+            if (op !== "none")
+                throw new Error(`worktree "${pdir}" has an in-progress ${op} operation`)
+
+            /*  stash uncommitted changes of parent worktree (including untracked files)  */
+            const stashed = await stashPush(pdir, "vcs merge")
+            try {
+                if (opts.mode === "rebase") {
+                    /*  rebase onto parent branch and fast-forward parent branch  */
+                    const res = await rebase(dir, parent, opts.safe).catch(async (err: unknown) => {
+                        await git(dir, [ "rebase", "--abort" ], "abort the failed rebase")
+                        throw err
+                    })
+                    if (res !== null && res.verdict === "PARTIAL") {
+                        await git(dir, [ "rebase", "--abort" ], "abort the rebase with unresolved conflicts")
+                        await fs.promises.rm(res.backupDir, { recursive: true, force: true })
+                        await report(res)
                         throw new Error(`merge of branch "${branch}" into "${parent}" aborted due to unresolved conflicts`)
                     }
+                    await gitOK(pdir, [ "merge", "--quiet", "--ff-only", branch ], "fast-forward the parent branch")
                 }
-                if (result.failed || (opts.mode === "squash" && (await git(pdir, [ "diff", "--cached", "--quiet" ])).failed))
-                    await gitOK(pdir, [ "commit", "--quiet", "--no-edit" ])
+                else {
+                    /*  merge or squash branch into parent branch  */
+                    const args = opts.mode === "squash" ?
+                        [ "merge", "--quiet", "--squash", branch ] :
+                        [ "merge", "--quiet", "--no-ff", "--no-edit", branch ]
+                    const result = await git(pdir, args, "merge the branch into the parent branch")
+                    if (result.failed) {
+                        if (!(await hasUnmerged(pdir))) {
+                            await git(pdir, [ "reset", "--quiet", "--merge" ], "abort the failed merge")
+                            throw new Error(`merge of branch "${branch}" into "${parent}" failed: ${(result.stderr || result.stdout).trim()}`)
+                        }
+                        const res = await resolveConflicts(pdir, opts.safe).catch(async (err: unknown) => {
+                            await git(pdir, [ "reset", "--quiet", "--merge" ], "abort the failed merge")
+                            throw err
+                        })
+                        if (res.verdict !== "RESOLVED") {
+                            await git(pdir, [ "reset", "--quiet", "--merge" ], "abort the merge with unresolved conflicts")
+                            await fs.promises.rm(res.backupDir, { recursive: true, force: true })
+                            await report(res)
+                            throw new Error(`merge of branch "${branch}" into "${parent}" aborted due to unresolved conflicts`)
+                        }
+                    }
+                    if (result.failed || (opts.mode === "squash" && (await git(pdir, [ "diff", "--cached", "--quiet" ], "check for staged changes")).failed))
+                        await gitOK(pdir, [ "commit", "--quiet", "--no-edit" ], "commit the merge")
+                }
+                if (opts.mode !== "squash" && (await git(pdir, [ "merge-base", "--is-ancestor", branch, parent ], "check whether the branch landed on the parent branch")).failed)
+                    throw new Error(`branch "${branch}" not contained in branch "${parent}" after merge`)
             }
-            if (opts.mode !== "squash" && (await git(pdir, [ "merge-base", "--is-ancestor", branch, parent ])).failed)
-                throw new Error(`branch "${branch}" not contained in branch "${parent}" after merge`)
+            catch (err: unknown) {
+                /*  restore stashed changes of parent worktree on the (aborted) original state  */
+                if (stashed && (await git(pdir, [ "stash", "pop", "--quiet" ], "restore the stashed changes after failure")).failed)
+                    info(`uncommitted changes of worktree "${path.basename(pdir)}" remain stashed -- ` +
+                        "run \"git stash pop\" there to restore them")
+                throw err
+            }
             info(`worktree "${worktree}" (branch "${branch}") merged into parent branch "${parent}" (mode: ${opts.mode})`)
+
+            /*  restore stashed changes of parent worktree, resolving conflicts  */
+            const pres = stashed ? await stashPop(pdir, opts.safe) : null
+            if (pres !== null) {
+                await report(pres)
+                info(`stashed changes of worktree "${path.basename(pdir)}" restored with conflicts: ` +
+                    "resolve the escalated conflicts manually, and run \"git reset\" and \"git stash drop\"")
+                process.exitCode = 1
+            }
         })
 
     /*  command: resolve  */
@@ -663,12 +883,16 @@ const rebase = async (dir: string, parent: string, safe: boolean): Promise<Resol
         .description("resolve the conflicts in a worktree and continue its in-progress operation")
         .option("-d, --basedir <basedir>", "base directory")
         .option("-s, --safe", "never touch non-content conflicts", false)
-        .argument("<worktree>", "worktree to resolve")
-        .action(async (worktree: string, opts: { basedir?: string, safe: boolean }) => {
-            const basedir = findBasedir(opts.basedir)
-            const dir     = worktreeDir(basedir, worktree)
+        .argument("[worktree]", "worktree to resolve (default: worktree of current directory)")
+        .action(async (worktree: string | undefined, opts: { basedir?: string, safe: boolean }) => {
+            const basedir = await findBasedir(opts.basedir)
+
+            /*  default to worktree containing the current directory  */
+            if (worktree === undefined)
+                worktree = path.basename(await gitOK(process.cwd(), [ "rev-parse", "--show-toplevel" ], "determine the worktree of the current directory"))
+            const dir     = await worktreeDir(basedir, worktree)
             const res     = await resolveAndContinue(dir, opts.safe)
-            report(res)
+            await report(res)
             info(`resolve verdict: ${res.verdict === "PARTIAL" ? chalk.yellow(res.verdict) : chalk.green(res.verdict)}`)
             if (res.verdict === "PARTIAL")
                 process.exitCode = 1
@@ -680,35 +904,44 @@ const rebase = async (dir: string, parent: string, safe: boolean): Promise<Resol
         .option("-d, --basedir <basedir>", "base directory")
         .argument("<worktree>", "worktree to destroy")
         .action(async (worktree: string, opts: { basedir?: string }) => {
-            const basedir = findBasedir(opts.basedir)
-            if (worktree === "master")
-                throw new Error("worktree \"master\" cannot be destroyed")
-            const dir    = worktreeDir(basedir, worktree)
-            const master = path.join(basedir, "master")
+            const basedir = await findBasedir(opts.basedir)
+            const name    = await masterName(basedir)
+            if (worktree === name)
+                throw new Error(`master worktree "${name}" cannot be destroyed`)
+            const dir    = await worktreeDir(basedir, worktree)
+            const master = path.join(basedir, name)
             const branch = await currentBranch(dir)
             const parent = await parentBranch(dir, branch).catch(() => currentBranch(master))
             await ensureClean(dir)
 
             /*  ensure the branch landed on its parent branch (by merge, rebase, or squash)  */
-            if ((await git(master, [ "merge-base", "--is-ancestor", branch, parent ])).failed) {
-                const tree   = await git(master, [ "merge-tree", "--write-tree", parent, branch ])
-                const ptree  = await gitOK(master, [ "rev-parse", `${parent}^{tree}` ])
+            if ((await git(master, [ "merge-base", "--is-ancestor", branch, parent ], "check whether the branch is contained in the parent branch")).failed) {
+                const tree  = await git(master, [ "merge-tree", "--write-tree", parent, branch ], "determine the tree of a merge of the branch into the parent branch")
+                const ptree = await gitOK(master, [ "rev-parse", `${parent}^{tree}` ], "determine the tree of the parent branch")
                 if (tree.failed || tree.stdout.split("\n")[0] !== ptree)
                     throw new Error(`branch "${branch}" is not merged into parent branch "${parent}"`)
             }
 
             /*  remove worktree and branch  */
-            if (fs.readlinkSync(path.join(basedir, "active")) === worktree)
-                setActive(basedir, "master")
-            await gitOK(master, [ "worktree", "remove", dir ])
-            await gitOK(master, [ "branch", "--quiet", "-D", branch ])
+            if ((await fs.promises.readlink(path.join(basedir, "active"))) === worktree)
+                await setActive(basedir, name)
+            await gitOK(master, [ "worktree", "remove", dir ], "remove the worktree")
+            await gitOK(master, [ "branch", "--quiet", "-D", branch ], "delete the branch")
             info(`worktree "${worktree}" and branch "${branch}" destroyed`)
         })
 
+    /*  add verbosity option to all commands  */
+    for (const cmd of program.commands)
+        cmd.addOption(new Option("-v, --verbose <num>", "verbosity level (0: quiet, 1: commands, 2: commands with comments)")
+            .choices([ "0", "1", "2" ]).default("0"))
+    program.hook("preAction", (_thisCommand, actionCommand) => {
+        verbose = Number(actionCommand.opts<{ verbose: string }>().verbose)
+    })
+
     await program.parseAsync(process.argv)
-})().catch((err: Error) => {
+})().catch((err: unknown) => {
     /*  fatal error  */
-    process.stderr.write(`${chalk.red("vcs: ERROR:")} ${err.message}\n`)
-    process.exit(1)
+    process.stderr.write(`${chalk.red("vcs: ERROR:")} ${err instanceof Error ? err.message : String(err)}\n`)
+    process.exitCode = 1
 })
 
