@@ -203,7 +203,11 @@ const theirsRefs: [ string, Operation ][] = [
     [ "CHERRY_PICK_HEAD", "cherry-pick" ], [ "REVERT_HEAD", "revert" ]
 ]
 const operation = async (dir: string): Promise<Operation> => {
-    const states: [ string, Operation ][] = [ ...theirsRefs, [ "rebase-merge", "rebase" ], [ "rebase-apply", "rebase" ] ]
+    /*  detect rebase by its state directories only, as Git can leave a stale REBASE_HEAD behind  */
+    const states: [ string, Operation ][] = [
+        ...theirsRefs.filter(([ , op ]) => op !== "rebase"),
+        [ "rebase-merge", "rebase" ], [ "rebase-apply", "rebase" ]
+    ]
     const paths = (await gitOK(dir, [ "rev-parse", ...states.flatMap(([ state ]) => [ "--git-path", state ]) ],
         "determine paths of the in-progress operation state files")).split("\n")
     for (const [ i, [ , op ] ] of states.entries())
