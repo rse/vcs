@@ -868,7 +868,7 @@ const cleanWorktree = async (dir: string, ignored: boolean) => {
     program.command("merge")
         .description("merge a worktree into its parent branch")
         .option("-d, --basedir <basedir>", "base directory")
-        .addOption(new Option("-m, --mode <mode>", "merge mode").choices([ "merge", "rebase", "squash" ]).default("merge"))
+        .addOption(new Option("-m, --mode <mode>", "merge mode").choices([ "merge", "rebase", "squash" ]).default("rebase"))
         .option("-s, --safe", "never touch non-content conflicts", false)
         .argument("[worktree]", "worktree to merge (default: worktree of current directory)")
         .action(async (worktree: string | undefined, opts: { basedir?: string, mode: "merge" | "rebase" | "squash", safe: boolean }) => {
