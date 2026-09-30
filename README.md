@@ -44,8 +44,8 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
 ```
 
 - `-v <num>`, `--verbose <num>`<br/>
-  Verbosity level: `0` (default) prints nothing (except errors), `1`
-  prints information and every executed command (as `$ <command>`),
+  Verbosity level: `0` (default) prints information and errors only, `1`
+  additionally prints every executed command (as `$ <command>`),
   and `2` additionally prints a brief comment (as `# <comment>`)
   before every executed command.
 - `-d <basedir>`, `--basedir <basedir>`<br/>

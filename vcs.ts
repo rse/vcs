@@ -44,13 +44,12 @@ type AIResult   = {
     touched: string[]
 }
 
-/*  verbosity level (0: quiet, 1: information and commands, 2: additionally command comments)  */
+/*  verbosity level (0: information only, 1: additionally commands, 2: additionally command comments)  */
 let verbose = 0
 
 /*  output information  */
 const info = (msg: string) => {
-    if (verbose >= 1)
-        process.stderr.write(`${chalk.blue("vcs:")} ${msg}\n`)
+    process.stderr.write(`${chalk.blue("vcs:")} ${msg}\n`)
 }
 
 /*  output a command (preceded by its comment) to be executed  */
@@ -588,8 +587,6 @@ const resolveAndContinue = async (dir: string, safe: boolean): Promise<Resolutio
 
 /*  report the escalated conflicts  */
 const report = async (res: Resolution) => {
-    if (verbose < 1)
-        return
     for (const e of res.escalations) {
         process.stderr.write(`${chalk.yellow("▶")} ${e.file}:${e.lines} (${e.kind}): ${e.reason}\n`)
         if (e.ours !== "")
@@ -1161,7 +1158,7 @@ const cleanWorktree = async (dir: string, ignored: boolean) => {
 
     /*  add verbosity option to all commands  */
     for (const cmd of program.commands)
-        cmd.addOption(new Option("-v, --verbose <num>", "verbosity level (0: quiet, 1: commands, 2: commands with comments)")
+        cmd.addOption(new Option("-v, --verbose <num>", "verbosity level (0: information, 1: plus commands, 2: plus command comments)")
             .choices([ "0", "1", "2" ]).default("0"))
     program.hook("preAction", (_thisCommand, actionCommand) => {
         verbose = Number(actionCommand.opts<{ verbose: string }>().verbose)
