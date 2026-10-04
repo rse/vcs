@@ -45,9 +45,10 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
 
 - `-v <num>`, `--verbose <num>`<br/>
   Verbosity level: `0` (default) prints information and errors only, `1`
-  additionally prints every executed command (as `$ <command>`),
+  additionally prints every executed command (as `$ <command>`)
+  and every action of Claude during conflict resolution (as `claude> <tool>: <detail>`),
   and `2` additionally prints a brief comment (as `# <comment>`)
-  before every executed command.
+  before every executed command and every comment of Claude.
 - `-d <basedir>`, `--basedir <basedir>`<br/>
   Base directory. By default, it is auto-detected as the current
   directory or the nearest parent directory containing an `active`

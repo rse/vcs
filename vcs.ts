@@ -44,7 +44,7 @@ type AIResult   = {
     touched: string[]
 }
 
-/*  verbosity level (0: information only, 1: additionally commands, 2: additionally command comments)  */
+/*  verbosity level (0: information only, 1: additionally commands and Claude actions, 2: additionally comments)  */
 let verbose = 0
 
 /*  output information  */
@@ -378,7 +378,7 @@ Procedure:
 `
     const args = [
         "-p", prompt,
-        "--output-format", "json",
+        "--output-format", "stream-json", "--verbose",
         "--json-schema", JSON.stringify(aiSchema),
         "--tools", "Read,Edit,Write,Bash",
         "--allowedTools", "Read", "Edit", "Write",
@@ -387,26 +387,50 @@ Procedure:
         "--add-dir", backupDir,
         "--no-session-persistence"
     ]
-    trace("claude", args.map((arg, i) => i === 1 ? "<prompt>" : i === 5 ? "<schema>" : arg),
+    trace("claude", args.map((arg, i) => i === 1 ? "<prompt>" : i === 6 ? "<schema>" : arg),
         "semantically resolve the conflicted files via Claude")
-    const result = await execa("claude", args, { cwd: root, reject: false, stdin: "ignore" })
+    const subprocess = execa("claude", args, { cwd: root, reject: false, stdin: "ignore" })
+    let output: AIResult | null = null
+    for await (const line of subprocess) {
+        if (!line.startsWith("{"))
+            continue
+        let response: {
+            type?:              string,
+            is_error?:          boolean,
+            structured_output?: AIResult,
+            message?:           { content?: { type: string, text?: string, name?: string, input?: Record<string, unknown> }[] }
+        }
+        try {
+            response = JSON.parse(line)
+        }
+        catch {
+            /*  ignore unparsable output lines  */
+            continue
+        }
+        if (response.type === "result" && !response.is_error && response.structured_output)
+            output = response.structured_output
+        else if (response.type === "assistant") {
+            /*  show the actions (and under verbosity level 2 also the comments) of Claude  */
+            for (const block of response.message?.content ?? []) {
+                if (block.type === "text" && verbose >= 2 && (block.text ?? "").trim() !== "")
+                    process.stderr.write((block.text ?? "").trim().split("\n").map((l) => `# ${l}\n`).join(""))
+                else if (block.type === "tool_use" && verbose >= 1 && block.name !== "StructuredOutput") {
+                    const input  = block.input ?? {}
+                    const file   = typeof input.file_path === "string" ? input.file_path : ""
+                    const detail = typeof input.command === "string" ? input.command :
+                        file !== "" ? (file.startsWith(root + path.sep) ? path.relative(root, file) : file) :
+                            JSON.stringify(input)
+                    process.stderr.write(`${chalk.magenta(`claude> ${block.name}: ${detail.replace(/\s*\n\s*/g, " ")}`)}\n`)
+                }
+            }
+        }
+    }
+    const result = await subprocess
     if (result.failed) {
         info(`Claude invocation failed: ${(result.stderr || result.stdout).trim()}`)
         return null
     }
-    for (const line of result.stdout.split("\n")) {
-        if (!line.startsWith("{"))
-            continue
-        try {
-            const response: { type?: string, is_error?: boolean, structured_output?: AIResult } = JSON.parse(line)
-            if (response.type === "result" && !response.is_error && response.structured_output)
-                return response.structured_output
-        }
-        catch {
-            /*  ignore unparsable output lines  */
-        }
-    }
-    return null
+    return output
 }
 
 /*  determine and classify the unmerged files of a worktree  */
@@ -517,6 +541,8 @@ const resolveConflicts = async (dir: string, safe: boolean): Promise<Resolution>
     /*  resolve remaining conflicts semantically via Claude  */
     if (toAI.length > 0) {
         info(`resolving ${toAI.length} conflicted file(s) via Claude`)
+        for (const c of toAI)
+            info(`${chalk.blue("▶")} ${c.file} (${c.kind})`)
         const result = await aiResolve(root, backupDir, op, theirs, toAI, safe)
         if (result === null) {
             /*  restore all files from their backups  */
@@ -1158,7 +1184,7 @@ const cleanWorktree = async (dir: string, ignored: boolean) => {
 
     /*  add verbosity option to all commands  */
     for (const cmd of program.commands)
-        cmd.addOption(new Option("-v, --verbose <num>", "verbosity level (0: information, 1: plus commands, 2: plus command comments)")
+        cmd.addOption(new Option("-v, --verbose <num>", "verbosity level (0: information, 1: plus commands and Claude actions, 2: plus command and Claude comments)")
             .choices([ "0", "1", "2" ]).default("0"))
     program.hook("preAction", (_thisCommand, actionCommand) => {
         verbose = Number(actionCommand.opts<{ verbose: string }>().verbose)
