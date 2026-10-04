@@ -83,6 +83,9 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   (including untracked files) are stashed before and restored after the
   rebase, resolving conflicts, too. On unresolvable conflicts, the
   rebase or restoration is left in progress for manual resolution.
+  For a worktree without a recorded parent branch (like the master
+  worktree), its upstream branch (like `origin/master`) is fetched from
+  its remote and used instead of the parent branch.
 - `merge [-m merge|rebase|squash] [-s] [<worktree>]`<br/>
   Merge the worktree (default: the worktree containing the current
   directory) into its parent branch with a merge commit (`merge`,
@@ -173,6 +176,8 @@ each operation runs in and the conditions under which it happens.
   git fetch --quiet origin                             # (only with an "origin" remote)
   git merge --quiet --ff-only origin/<parent-branch>   # in worktree of <parent-branch> (if behind), or
   git update-ref refs/heads/<parent-branch> refs/remotes/origin/<parent-branch>  # (if not checked out)
+  git for-each-ref --format=... refs/heads/<branch>    # (only without <parent-branch>: determine <remote>/<upstream-branch>)
+  git fetch --quiet <remote>                           # (only without <parent-branch>: use <remote>/<upstream-branch> as <parent-branch>)
   git merge-base --is-ancestor <parent-branch> HEAD    # (stop here, if already up-to-date)
   git stash push --quiet --include-untracked           # (only with uncommitted changes)
   git rebase --quiet <parent-branch>

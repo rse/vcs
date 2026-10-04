@@ -185,6 +185,14 @@ const parentBranch = async (dir: string, branch: string) => {
     return result.stdout
 }
 
+/*  determine configured upstream branch of a branch (or null)  */
+const upstreamBranch = async (dir: string, branch: string) => {
+    const format = "--format=%(upstream)%00%(upstream:short)%00%(upstream:remotename)"
+    const result = await gitOK(dir, [ "for-each-ref", format, `refs/heads/${branch}` ], "determine the upstream branch")
+    const [ ref = "", name = "", remote = "" ] = result.split("\0")
+    return ref === "" ? null : { ref, name, remote }
+}
+
 /*  determine worktree directory where a branch is checked out (or empty)  */
 const branchDir = async (dir: string, branch: string) => {
     let worktree = ""
@@ -846,15 +854,29 @@ const cleanWorktree = async (dir: string, ignored: boolean) => {
                 worktree = path.basename(await gitOK(process.cwd(), [ "rev-parse", "--show-toplevel" ], "determine the worktree of the current directory"))
             const dir     = await worktreeDir(basedir, worktree)
             const branch  = await currentBranch(dir)
-            const parent  = await parentBranch(dir, branch)
             const op      = await operation(dir)
             if (op !== "none")
                 throw new Error(`worktree "${dir}" has an in-progress ${op} operation`)
 
-            /*  refresh parent branch and short-circuit processing if already up-to-date  */
-            await refreshBranch(dir, parent)
+            /*  refresh parent branch, or (without a recorded one, as for
+                the master worktree) fetch the upstream branch instead  */
+            let parent = await parentBranch(dir, branch).catch(() => "")
+            let target = `parent branch "${parent}"`
+            if (parent !== "")
+                await refreshBranch(dir, parent)
+            else {
+                const upstream = await upstreamBranch(dir, branch)
+                if (upstream === null)
+                    throw new Error(`neither parent nor upstream branch recorded for branch "${branch}"`)
+                if (upstream.remote !== "" && upstream.remote !== ".")
+                    await gitOK(dir, [ "fetch", "--quiet", upstream.remote ], `fetch changes from "${upstream.remote}"`)
+                parent = upstream.ref
+                target = `upstream branch "${upstream.name}"`
+            }
+
+            /*  short-circuit processing if already up-to-date  */
             if (!(await git(dir, [ "merge-base", "--is-ancestor", parent, "HEAD" ], "check whether the parent branch is already contained")).failed) {
-                info(`worktree "${worktree}" already up-to-date with parent branch "${parent}"`)
+                info(`worktree "${worktree}" already up-to-date with ${target}`)
                 return
             }
 
@@ -887,7 +909,7 @@ const cleanWorktree = async (dir: string, ignored: boolean) => {
                 process.exitCode = 1
                 return
             }
-            info(`worktree "${worktree}" synchronized onto parent branch "${parent}"`)
+            info(`worktree "${worktree}" synchronized onto ${target}`)
         })
 
     /*  command: merge  */
