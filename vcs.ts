@@ -428,7 +428,7 @@ Procedure:
                     const detail = typeof input.command === "string" ? input.command :
                         file !== "" ? (file.startsWith(root + path.sep) ? path.relative(root, file) : file) :
                             JSON.stringify(input)
-                    process.stderr.write(`${chalk.magenta(`claude> ${block.name}: ${detail.replace(/\s*\n\s*/g, " ")}`)}\n`)
+                    process.stderr.write(`${chalk.red(`claude> ${block.name}: ${detail.replace(/\s*\n\s*/g, " ")}`)}\n`)
                 }
             }
         }
