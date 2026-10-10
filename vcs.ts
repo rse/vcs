@@ -635,19 +635,41 @@ const report = async (res: Resolution) => {
 /*  rebase a worktree onto its parent branch, resolving conflicts  */
 const rebase = async (dir: string, parent: string, safe: boolean): Promise<Resolution | null> => {
     const result = await git(dir, [ "rebase", "--quiet", parent ], "rebase onto the parent branch")
-    if (!result.failed)
+    if (!result.failed) {
+        info(`branch of worktree "${path.basename(dir)}" rebased onto "${parent}"`)
         return null
+    }
     if (!(await hasUnmerged(dir))) {
         await git(dir, [ "rebase", "--abort" ], "abort the failed rebase")
         throw new Error(`rebase onto "${parent}" failed: ${(result.stderr || result.stdout).trim()}`)
     }
-    return resolveAndContinue(dir, safe)
+    const res = await resolveAndContinue(dir, safe)
+    if (res.verdict !== "PARTIAL")
+        info(`branch of worktree "${path.basename(dir)}" rebased onto "${parent}" (with resolved conflicts)`)
+    return res
 }
 
-/*  stash uncommitted changes of a worktree (including untracked files)  */
-const stashPush = async (dir: string, message: string) => {
+/*  stash uncommitted changes of a worktree (including untracked files), but, for a
+    subsequent rebase onto a branch, only if they could actually interfere with it  */
+const stashPush = async (dir: string, message: string, onto = "") => {
     if ((await gitOK(dir, [ "status", "--porcelain" ], "check for uncommitted changes")) === "")
         return false
+    if (onto !== "" && (await gitOK(dir, [ "status", "--porcelain", "--untracked-files=no" ], "check for uncommitted changes of tracked files")) === "") {
+        /*  with untracked files only, a rebase is affected just by untracked files (or their
+            leading directories) colliding with files written by it, i.e., files of the target
+            branch or of the replayed commits  */
+        const list = async (args: string[], what: string) =>
+            (await gitOK(dir, [ "-c", "core.quotePath=false", ...args ], what)).split("\n").filter((f) => f !== "")
+        const prefixes = (f: string) =>
+            f.split("/").map((_, i, parts) => parts.slice(0, i + 1).join("/"))
+        const written = new Set([
+            ...(await list([ "ls-tree", "-r", "--name-only", onto ], "list the files of the target branch")),
+            ...(await list([ "log", "--name-only", "--format=", `${onto}..HEAD` ], "list the files of the replayed commits"))
+        ].flatMap(prefixes))
+        const untracked = await list([ "ls-files", "--others", "--exclude-standard" ], "list the untracked files")
+        if (!untracked.some((f) => prefixes(f).some((p) => written.has(p))))
+            return false
+    }
     await gitOK(dir, [ "stash", "push", "--quiet", "--include-untracked", "--message", message ], "stash the uncommitted changes")
     info(`uncommitted changes of worktree "${path.basename(dir)}" stashed`)
     return true
@@ -881,7 +903,7 @@ const cleanWorktree = async (dir: string, ignored: boolean) => {
             }
 
             /*  stash uncommitted changes (including untracked files)  */
-            const stashed   = await stashPush(dir, "vcs sync")
+            const stashed   = await stashPush(dir, "vcs sync", parent)
             const stashNote = stashed ? " -- afterwards, run \"git stash pop\" to restore the stashed changes" : ""
 
             /*  rebase onto parent branch  */
@@ -944,7 +966,7 @@ const cleanWorktree = async (dir: string, ignored: boolean) => {
                 a single stash stack  */
             if (opts.mode === "rebase"
                 && (await git(dir, [ "merge-base", "--is-ancestor", parent, "HEAD" ], "check whether the parent branch is already contained")).failed) {
-                const fstashed = await stashPush(dir, "vcs merge")
+                const fstashed = await stashPush(dir, "vcs merge", parent)
                 const restore  = async () => {
                     if (fstashed && (await git(dir, [ "stash", "pop", "--quiet" ], "restore the stashed changes after failure")).failed)
                         info(`uncommitted changes of worktree "${worktree}" remain stashed -- ` +
