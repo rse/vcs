@@ -928,7 +928,9 @@ const cleanWorktree = async (dir: string, ignored: boolean) => {
             const dir     = await worktreeDir(basedir, worktree)
             const branch  = await currentBranch(dir)
             const parent  = await parentBranch(dir, branch)
-            await ensureClean(dir)
+            const fop     = await operation(dir)
+            if (fop !== "none")
+                throw new Error(`worktree "${dir}" has an in-progress ${fop} operation`)
             const pdir = await branchDir(dir, parent)
             if (pdir === "")
                 throw new Error(`parent branch "${parent}" is not checked out in any worktree`)
@@ -936,27 +938,52 @@ const cleanWorktree = async (dir: string, ignored: boolean) => {
             if (op !== "none")
                 throw new Error(`worktree "${pdir}" has an in-progress ${op} operation`)
 
+            /*  in mode "rebase", rebase onto parent branch (unless already contained), while
+                temporarily stashing uncommitted changes of worktree (including untracked files)
+                -- completely before stashing in the parent worktree, as all worktrees share
+                a single stash stack  */
+            if (opts.mode === "rebase"
+                && (await git(dir, [ "merge-base", "--is-ancestor", parent, "HEAD" ], "check whether the parent branch is already contained")).failed) {
+                const fstashed = await stashPush(dir, "vcs merge")
+                const restore  = async () => {
+                    if (fstashed && (await git(dir, [ "stash", "pop", "--quiet" ], "restore the stashed changes after failure")).failed)
+                        info(`uncommitted changes of worktree "${worktree}" remain stashed -- ` +
+                            "run \"git stash pop\" there to restore them")
+                }
+                const res = await rebase(dir, parent, opts.safe).catch(async (err: unknown) => {
+                    await git(dir, [ "rebase", "--abort" ], "abort the failed rebase")
+                    await restore()
+                    throw err
+                })
+                if (res !== null && res.verdict === "PARTIAL") {
+                    await git(dir, [ "rebase", "--abort" ], "abort the rebase with unresolved conflicts")
+                    await fs.promises.rm(res.backupDir, { recursive: true, force: true })
+                    await restore()
+                    await report(res)
+                    throw new Error(`merge of branch "${branch}" into "${parent}" aborted due to unresolved conflicts`)
+                }
+                const fres = fstashed ? await stashPop(dir, opts.safe) : null
+                if (fres !== null) {
+                    await report(fres)
+                    info(`branch "${branch}" rebased onto parent branch "${parent}", but not yet merged, as ` +
+                        `stashed changes of worktree "${worktree}" restored with conflicts: resolve the escalated ` +
+                        "conflicts manually, run \"git reset\" and \"git stash drop\", and re-run \"vcs merge\"")
+                    process.exitCode = 1
+                    return
+                }
+            }
+
             /*  stash uncommitted changes of parent worktree (including untracked files)  */
             const stashed = await stashPush(pdir, "vcs merge")
             try {
-                if (opts.mode === "rebase") {
-                    /*  rebase onto parent branch and fast-forward parent branch  */
-                    const res = await rebase(dir, parent, opts.safe).catch(async (err: unknown) => {
-                        await git(dir, [ "rebase", "--abort" ], "abort the failed rebase")
-                        throw err
-                    })
-                    if (res !== null && res.verdict === "PARTIAL") {
-                        await git(dir, [ "rebase", "--abort" ], "abort the rebase with unresolved conflicts")
-                        await fs.promises.rm(res.backupDir, { recursive: true, force: true })
-                        await report(res)
-                        throw new Error(`merge of branch "${branch}" into "${parent}" aborted due to unresolved conflicts`)
-                    }
+                if (opts.mode === "rebase")
+                    /*  fast-forward parent branch (onto which the branch was rebased)  */
                     await gitOK(pdir, [ "merge", "--quiet", "--ff-only", branch ], "fast-forward the parent branch")
-                }
                 else {
-                    /*  merge or squash branch into parent branch  */
+                    /*  merge or squash branch into parent branch
+                        (overriding a "merge.ff=only" configuration on squash)  */
                     const args = opts.mode === "squash" ?
-                        [ "merge", "--quiet", "--squash", branch ] :
+                        [ "-c", "merge.ff=true", "merge", "--quiet", "--squash", branch ] :
                         [ "merge", "--quiet", "--no-ff", "--no-edit", branch ]
                     const result = await git(pdir, args, "merge the branch into the parent branch")
                     if (result.failed) {

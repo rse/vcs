@@ -88,12 +88,16 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   its remote and used instead of the parent branch.
 - `merge [-m merge|rebase|squash] [-s] [<worktree>]`<br/>
   Merge the worktree (default: the worktree containing the current
-  directory) into its parent branch with a merge commit (`merge`,
-  default), a rebase and fast-forward (`rebase`), or a single squashed
-  commit (`squash`), resolving conflicts. On unresolvable conflicts, the
+  directory) into its parent branch with a merge commit (`merge`),
+  a rebase and fast-forward (`rebase`, default), or a single squashed
+  commit (`squash`), resolving conflicts. Only the committed changes
+  of the worktree are merged. On unresolvable conflicts, the
   merge is aborted. Uncommitted changes (including untracked files) of
   the worktree of the parent branch are stashed before and restored
-  after the merge, resolving conflicts, too.
+  after the merge, resolving conflicts, too. Uncommitted changes of the
+  worktree itself stay untouched, except in mode `rebase`, where they
+  are stashed before and restored after the rebase (if the worktree is
+  not already up-to-date with the parent branch), resolving conflicts, too.
 - `resolve [-s] [<worktree>]`<br/>
   Resolve the conflicts in the worktree (default: the worktree containing
   the current directory) and continue its in-progress operation.
@@ -199,17 +203,22 @@ each operation runs in and the conditions under which it happens.
   git commit --quiet --no-edit                         # (only on resolved conflicts)
 
   # mode "squash" (in worktree of <parent-branch>)
-  git merge --quiet --squash <branch>
+  git -c merge.ff=true merge --quiet --squash <branch>
   vcs resolve                                          # (only on conflicts, see "resolve")
   git commit --quiet --no-edit                         # (only with staged changes)
 
   # mode "rebase"
+  git merge-base --is-ancestor <parent-branch> HEAD    # in <worktree> (skip rebase steps, if already up-to-date)
+  git stash push --quiet --include-untracked           # in <worktree> (only with uncommitted changes)
   git rebase --quiet <parent-branch>                   # in <worktree>
   vcs resolve                                          # in <worktree> (only on conflicts, see "resolve")
+  git rebase --abort                                   # in <worktree> (only on unresolved conflicts)
+  git stash pop --quiet                                # in <worktree> (only with stashed changes)
+  vcs resolve                                          # in <worktree> (only on conflicts, see "resolve")
+  git reset --quiet && git stash drop --quiet          # in <worktree> (only on resolved conflicts)
   git merge --quiet --ff-only <branch>                 # in worktree of <parent-branch>
 
   git reset --quiet --merge                            # (only on unresolved conflicts in modes "merge" and "squash")
-  git rebase --abort                                   # (only on unresolved conflicts in mode "rebase")
   git merge-base --is-ancestor <branch> <parent-branch>  # (not in mode "squash")
   git stash pop --quiet                                # in worktree of <parent-branch> (only with stashed changes)
   vcs resolve                                          # (only on conflicts, see "resolve")
