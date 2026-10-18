@@ -90,7 +90,9 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   Merge the worktree (default: the worktree containing the current
   directory) into its parent branch with a merge commit (`merge`),
   a rebase and fast-forward (`rebase`, default), or a single squashed
-  commit (`squash`), resolving conflicts. Only the committed changes
+  commit (`squash`), resolving conflicts. For a worktree without a
+  recorded parent branch, the branch of the master worktree is used
+  as the parent branch. Only the committed changes
   of the worktree are merged. On unresolvable conflicts, the
   merge is aborted. Uncommitted changes (including untracked files) of
   the worktree of the parent branch are stashed before and restored
