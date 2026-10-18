@@ -34,6 +34,7 @@ $ vcs list     [-v <num>] [-d <basedir>]
 $ vcs active   [-v <num>] [-d <basedir>]
 $ vcs activate [-v <num>] [-d <basedir>] [<worktree>]
 $ vcs fork     [-v <num>] [-d <basedir>] [-b <branch>] <worktree> [<parent-branch>]
+$ vcs checkout [-v <num>] [-d <basedir>] [-b <branch>] <worktree> [<parent-branch>]
 $ vcs sync     [-v <num>] [-d <basedir>] [-s] [<worktree>]
 $ vcs merge    [-v <num>] [-d <basedir>] [-m merge|rebase|squash] [-s] [<worktree>]
 $ vcs resolve  [-v <num>] [-d <basedir>] [-s] [<worktree>]
@@ -75,6 +76,13 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   `<worktree>`), based on the parent branch `<parent-branch>` (default:
   the branch of the active worktree). The parent branch is recorded for
   `sync`, `merge`, and `destroy`.
+- `checkout [-b <branch>] <worktree> [<parent-branch>]`<br/>
+  Create the worktree for the already existing branch `<branch>`
+  (default: `<worktree>`), which is not checked out in any other
+  worktree, e.g., after its worktree directory was removed. The
+  references of missing worktrees are pruned before. The parent branch
+  `<parent-branch>` is recorded (default: the parent branch already
+  recorded on `fork` is kept).
 - `sync [-s] [<worktree>]`<br/>
   Fetch `origin`, fast-forward the parent branch, and rebase the
   worktree (default: the worktree containing the current directory) onto
@@ -175,6 +183,15 @@ each operation runs in and the conditions under which it happens.
   git config branch.<branch>.vcsParent <parent-branch>
   ```
 
+- `checkout`:
+
+  ```sh
+  git worktree prune
+  git worktree list --porcelain                        # ensure <branch> is not checked out elsewhere
+  git worktree add --quiet <worktree> <branch>
+  git config branch.<branch>.vcsParent <parent-branch>  # (only with <parent-branch>)
+  ```
+
 - `sync`:
 
   ```sh
@@ -197,6 +214,7 @@ each operation runs in and the conditions under which it happens.
 
   ```sh
   git config --get branch.<branch>.vcsParent           # determine <parent-branch>
+  git branch --show-current                            # in master worktree (only without recorded <parent-branch>)
   git stash push --quiet --include-untracked           # in worktree of <parent-branch> (only with uncommitted changes)
 
   # mode "merge" (in worktree of <parent-branch>)

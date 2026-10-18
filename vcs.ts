@@ -862,6 +862,48 @@ const cleanWorktree = async (dir: string, ignored: boolean) => {
             info(`worktree "${worktree}" created with branch "${branch}" (parent branch "${parent}")`)
         })
 
+    /*  command: checkout  */
+    program.command("checkout")
+        .description("create a worktree for an existing branch")
+        .option("-d, --basedir <basedir>", "base directory")
+        .option("-b, --branch <branch>", "existing branch to check out (default: <worktree>)")
+        .argument("<worktree>", "worktree to create")
+        .argument("[parent-branch]", "parent branch to record (default: already recorded parent branch)")
+        .action(async (worktree: string, parent: string | undefined, opts: { basedir?: string, branch?: string }) => {
+            const basedir = await findBasedir(opts.basedir)
+            const name    = await masterName(basedir)
+            if (worktree === name)
+                throw new Error(`worktree name "${name}" is reserved for master worktree`)
+            const dir = await worktreeDir(basedir, worktree, false)
+            if (await exists(dir))
+                throw new Error(`directory "${dir}" already exists`)
+            const master = path.join(basedir, name)
+            const branch = opts.branch ?? worktree
+            if ((await git(master, [ "rev-parse", "--verify", "--quiet", `refs/heads/${branch}` ], "check for the existence of the branch")).failed)
+                throw new Error(`branch "${branch}" does not exist (use "fork" to create it)`)
+            if (parent !== undefined) {
+                if (parent === branch)
+                    throw new Error(`branch "${branch}" cannot be its own parent branch`)
+                if ((await git(master, [ "rev-parse", "--verify", "--quiet", `refs/heads/${parent}` ], "check for the existence of the parent branch")).failed)
+                    throw new Error(`parent branch "${parent}" does not exist`)
+            }
+
+            /*  drop stale references of manually removed worktree directories and ensure the branch is free  */
+            await gitOK(master, [ "worktree", "prune" ], "prune the references of missing worktrees")
+            const other = await branchDir(master, branch)
+            if (other !== "")
+                throw new Error(`branch "${branch}" is already checked out in worktree "${other}"`)
+
+            /*  create worktree and record or reuse parent branch  */
+            await gitOK(master, [ "worktree", "add", "--quiet", dir, branch ], "create the worktree for the existing branch")
+            if (parent !== undefined)
+                await gitOK(master, [ "config", `branch.${branch}.vcsParent`, parent ], "record the parent branch")
+            else
+                parent = await parentBranch(master, branch).catch(() => undefined)
+            info(`worktree "${worktree}" created for existing branch "${branch}" ` +
+                (parent !== undefined ? `(parent branch "${parent}")` : "(no parent branch recorded)"))
+        })
+
     /*  command: sync  */
     program.command("sync")
         .description("rebase a worktree onto its (refreshed) parent branch")
