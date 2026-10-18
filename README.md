@@ -7,16 +7,15 @@ VCS
 Abstract
 --------
 
-This is a small Command-Line Interface (CLI) for managing a Git
-worktree-based workflow inside a *basedir*. The basedir directly contains
-the Git repository clone (the *master worktree*, usually named `master`
-or `main`), any number of Git worktrees of it, and a symbolic link
-`active`, which points to either the master worktree or one of the
-worktrees. The master worktree is auto-detected as the directory the
-`.git` files of the worktrees point into (or, without any worktrees,
-as the single directory with a `.git` directory). Worktrees are forked from a parent branch, synchronized
-with it, and merged back into it, where Git conflicts are resolved
-semantically and safely with the help of Claude Code (`claude -p`).
+This is a small Command-Line Interface (CLI) for managing a Git worktree-based workflow inside a
+*basedir*. The basedir directly contains the Git repository clone (the *master worktree*, usually
+named `master` or `main`), any number of Git worktrees of it, and a symbolic link `active`, which
+points to either the master worktree or one of the worktrees.
+
+The master worktree is auto-detected as the directory the `.git` files of the worktrees point
+into (or, without any worktrees, as the single directory with a `.git` directory). Worktrees are
+forked from a parent branch, synchronized with it, and merged back into it, where Git conflicts are
+resolved semantically and safely with the help of Claude Code (`claude -p`).
 
 Installation
 ------------
@@ -51,32 +50,39 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   and every action of Claude during conflict resolution (as `claude> <tool>: <detail>`),
   and `2` additionally prints a brief comment (as `# <comment>`)
   before every executed command and every comment of Claude.
+
 - `-d <basedir>`, `--basedir <basedir>`<br/>
   Base directory. By default, it is auto-detected as the current
   directory or the nearest parent directory containing an `active`
   symbolic link (for `init`: the current directory).
+
 - `init [-r <repo-url>]`<br/>
   Create the basedir with a clone of the Git repository `<repo-url>`
   in the master worktree, named after the default branch of the
   repository, and activate it. If a master worktree already exists,
   `-r` has to be omitted and the existing master worktree is taken as is.
+
 - `list`<br/>
   List all worktrees as a table with their directory, worktree name
   (`-` if not located directly under the basedir), branch, and an `X`
   marker for the master, the active, and the current worktree (the one
   containing the current directory). The master worktree
   is rendered in bold and the active worktree in blue.
+
 - `active`<br/>
   Show the active worktree.
+
 - `activate [<worktree>]`<br/>
   Activate the worktree (default: the worktree containing the current
   directory, determined via its Git root) by re-pointing the `active`
   symbolic link.
+
 - `fork [-b <branch>] <worktree> [<parent-branch>]`<br/>
   Create the worktree with the new branch `<branch>` (default:
   `<worktree>`), based on the parent branch `<parent-branch>` (default:
   the branch of the active worktree). The parent branch is recorded for
   `sync`, `merge`, and `destroy`.
+
 - `checkout [-b <branch>] <worktree> [<parent-branch>]`<br/>
   Create the worktree for the already existing branch `<branch>`
   (default: `<worktree>`), which is not checked out in any other
@@ -85,11 +91,13 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   `<parent-branch>` is recorded (default: the parent branch already
   recorded on `fork` is kept). Without any recorded parent branch,
   the branch of the master worktree is used as the parent branch.
+
 - `parent <worktree> [<parent-branch>]`<br/>
   Record the parent branch `<parent-branch>` for the branch of the
   worktree, e.g., for a worktree not created with `fork` or `checkout`.
   Without `<parent-branch>`, show the recorded parent branch (or the
   branch of the master worktree, if none is recorded).
+
 - `sync [-s] [<worktree>]`<br/>
   Fetch `origin`, fast-forward the parent branch, and rebase the
   worktree (default: the worktree containing the current directory) onto
@@ -102,6 +110,7 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   master worktree is used as the parent branch. For the master worktree
   itself, its upstream branch (like `origin/master`) is fetched from
   its remote and used instead of the parent branch.
+
 - `merge [-m merge|rebase|squash] [-s] [<worktree>]`<br/>
   Merge the worktree (default: the worktree containing the current
   directory) into its parent branch with a merge commit (`merge`),
@@ -116,9 +125,11 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   worktree itself stay untouched, except in mode `rebase`, where they
   are stashed before and restored after the rebase (if the worktree is
   not already up-to-date with the parent branch), resolving conflicts, too.
+
 - `resolve [-s] [<worktree>]`<br/>
   Resolve the conflicts in the worktree (default: the worktree containing
   the current directory) and continue its in-progress operation.
+
 - `shuffle [-s] <worktree>`<br/>
   Move all staged, unstaged, and untracked files of the worktree
   containing the current directory into the working copy of the
@@ -128,21 +139,25 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   current worktree is cleaned (see `clean`). On unresolvable conflicts,
   the current worktree is kept untouched for manual resolution in the
   other worktree.
+
 - `clean [-i] [<worktree>]`<br/>
   Abort any in-progress operation of the worktree (default: the worktree
   containing the current directory), reset it to its `HEAD`, and remove
   all untracked files (with `-i` also all ignored files), so the
   worktree looks as freshly forked.
+
 - `rename <worktree-old> <worktree-new>`<br/>
   Rename the worktree, both its directory and its Git worktree
   reference. If its branch is named after the worktree, the branch
   is renamed, too, and child branches are re-pointed to it. If the
   worktree was active, the renamed worktree is activated.
+
 - `destroy <worktree>`<br/>
   Remove the worktree and its branch, if the branch has landed on its
   parent branch. For a worktree without a recorded parent branch, the
   branch of the master worktree is used as the parent branch. If the
   worktree was active, the master worktree is activated.
+
 - `-s`, `--safe`<br/>
   Never touch non-content conflicts (binary, submodule, modify/delete,
   rename, delete/delete), but always escalate them. Without this option,
