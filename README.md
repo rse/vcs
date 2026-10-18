@@ -82,7 +82,8 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   worktree, e.g., after its worktree directory was removed. The
   references of missing worktrees are pruned before. The parent branch
   `<parent-branch>` is recorded (default: the parent branch already
-  recorded on `fork` is kept).
+  recorded on `fork` is kept). Without any recorded parent branch,
+  the branch of the master worktree is used as the parent branch.
 - `sync [-s] [<worktree>]`<br/>
   Fetch `origin`, fast-forward the parent branch, and rebase the
   worktree (default: the worktree containing the current directory) onto
@@ -91,8 +92,9 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   (including untracked files) are stashed before and restored after the
   rebase, resolving conflicts, too. On unresolvable conflicts, the
   rebase or restoration is left in progress for manual resolution.
-  For a worktree without a recorded parent branch (like the master
-  worktree), its upstream branch (like `origin/master`) is fetched from
+  For a worktree without a recorded parent branch, the branch of the
+  master worktree is used as the parent branch. For the master worktree
+  itself, its upstream branch (like `origin/master`) is fetched from
   its remote and used instead of the parent branch.
 - `merge [-m merge|rebase|squash] [-s] [<worktree>]`<br/>
   Merge the worktree (default: the worktree containing the current
@@ -132,8 +134,9 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   worktree was active, the renamed worktree is activated.
 - `destroy <worktree>`<br/>
   Remove the worktree and its branch, if the branch has landed on its
-  parent branch. If the worktree was active, the master worktree is
-  activated.
+  parent branch. For a worktree without a recorded parent branch, the
+  branch of the master worktree is used as the parent branch. If the
+  worktree was active, the master worktree is activated.
 - `-s`, `--safe`<br/>
   Never touch non-content conflicts (binary, submodule, modify/delete,
   rename, delete/delete), but always escalate them. Without this option,
@@ -196,11 +199,12 @@ each operation runs in and the conditions under which it happens.
 
   ```sh
   git config --get branch.<branch>.vcs-parent          # determine <parent-branch>
+  git branch --show-current                            # in master worktree (only without recorded <parent-branch>)
   git fetch --quiet origin                             # (only with an "origin" remote)
   git merge --quiet --ff-only origin/<parent-branch>   # in worktree of <parent-branch> (if behind), or
   git update-ref refs/heads/<parent-branch> refs/remotes/origin/<parent-branch>  # (if not checked out)
-  git for-each-ref --format=... refs/heads/<branch>    # (only without <parent-branch>: determine <remote>/<upstream-branch>)
-  git fetch --quiet <remote>                           # (only without <parent-branch>: use <remote>/<upstream-branch> as <parent-branch>)
+  git for-each-ref --format=... refs/heads/<branch>    # (only in master worktree: determine <remote>/<upstream-branch>)
+  git fetch --quiet <remote>                           # (only in master worktree: use <remote>/<upstream-branch> as <parent-branch>)
   git merge-base --is-ancestor <parent-branch> HEAD    # (stop here, if already up-to-date)
   git stash push --quiet --include-untracked           # (only with uncommitted changes)
   git rebase --quiet <parent-branch>
@@ -302,6 +306,8 @@ each operation runs in and the conditions under which it happens.
 - `destroy`:
 
   ```sh
+  git config --get branch.<branch>.vcs-parent            # determine <parent-branch>
+  git branch --show-current                              # in master worktree (only without recorded <parent-branch>)
   git merge-base --is-ancestor <branch> <parent-branch>  # check whether branch landed, or else
   git merge-tree --write-tree <parent-branch> <branch>   # check whether squashed branch landed
   ln -s <master> active                                  # (only if worktree was active, atomically)

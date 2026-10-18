@@ -33,7 +33,7 @@ import {
     info, git, gitOK
 } from "./vcs-util-base.js"
 import {
-    findBasedir, worktreeDir, currentBranch, parentBranch, branchDir,
+    findBasedir, worktreeDir, masterName, currentBranch, parentBranch, branchDir,
     operation
 } from "./vcs-util-repo.js"
 import { report }          from "./vcs-util-resolve.js"
@@ -92,11 +92,11 @@ export const commandSync = (program: Command) => {
             if (op !== "none")
                 throw new Error(`worktree "${dir}" has an in-progress ${op} operation`)
 
-            /*  refresh parent branch, or (without a recorded one, as for
-                the master worktree) fetch the upstream branch instead  */
-            let parent = await parentBranch(dir, branch).catch(() => "")
+            /*  refresh parent branch (default: branch of master worktree), or
+                (for the master worktree itself) fetch the upstream branch instead  */
+            let parent = await parentBranch(dir, branch).catch(async () => currentBranch(path.join(basedir, await masterName(basedir))))
             let target = `parent branch "${parent}"`
-            if (parent !== "")
+            if (parent !== branch)
                 await refreshBranch(dir, parent)
             else {
                 const upstream = await upstreamBranch(dir, branch)

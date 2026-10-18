@@ -33,7 +33,7 @@ import {
     info, git, gitOK, exists
 } from "./vcs-util-base.js"
 import {
-    findBasedir, worktreeDir, masterName, parentBranch, branchDir
+    findBasedir, worktreeDir, masterName, currentBranch, parentBranch, branchDir
 } from "./vcs-util-repo.js"
 
 /*  command: checkout  */
@@ -76,7 +76,8 @@ export const commandCheckout = (program: Command) => {
             else
                 parent = await parentBranch(master, branch).catch(() => undefined)
             info(`worktree "${worktree}" created for existing branch "${branch}" ` +
-                (parent !== undefined ? `(parent branch "${parent}")` : "(no parent branch recorded)"))
+                (parent !== undefined ? `(parent branch "${parent}")` :
+                    `(no parent branch recorded, defaulting to master branch "${await currentBranch(master)}")`))
         })
 }
 
