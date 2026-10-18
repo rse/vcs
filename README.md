@@ -160,9 +160,9 @@ each operation runs in and the conditions under which it happens.
 
   ```sh
   # (only without an existing master worktree)
-  git ls-remote --symref -- <repo-url> HEAD            # determine default branch <name>
+  git ls-remote --symref -- <repo-url> HEAD  # determine default branch <name>
   git clone --quiet -- <repo-url> <name>
-  ln -s <name> active                                  # (atomically)
+  ln -s <name> active                        # (atomically)
   ```
 
 - `list`:
@@ -180,14 +180,14 @@ each operation runs in and the conditions under which it happens.
 - `activate`:
 
   ```sh
-  git rev-parse --show-toplevel                        # (only without <worktree>)
-  ln -s <worktree> active                              # (atomically)
+  git rev-parse --show-toplevel  # (only without <worktree>)
+  ln -s <worktree> active        # (atomically)
   ```
 
 - `fork`:
 
   ```sh
-  git branch --show-current                            # in active worktree (only without <parent-branch>)
+  git branch --show-current  # in active worktree (only without <parent-branch>)
   git worktree add --quiet -b <branch> <worktree> <parent-branch>
   git config branch.<branch>.vcs-parent <parent-branch>
   ```
@@ -196,7 +196,7 @@ each operation runs in and the conditions under which it happens.
 
   ```sh
   git worktree prune
-  git worktree list --porcelain                        # ensure <branch> is not checked out elsewhere
+  git worktree list --porcelain                          # ensure <branch> is not checked out elsewhere
   git worktree add --quiet <worktree> <branch>
   git config branch.<branch>.vcs-parent <parent-branch>  # (only with <parent-branch>)
   ```
@@ -204,95 +204,95 @@ each operation runs in and the conditions under which it happens.
 - `parent`:
 
   ```sh
-  git config --get branch.<branch>.vcs-parent          # (only without <parent-branch>)
-  git branch --show-current                            # in master worktree (only without recorded <parent-branch>)
+  git config --get branch.<branch>.vcs-parent            # (only without <parent-branch>)
+  git branch --show-current                              # in master worktree (only without recorded <parent-branch>)
   git config branch.<branch>.vcs-parent <parent-branch>  # (only with <parent-branch>)
   ```
 
 - `sync`:
 
   ```sh
-  git config --get branch.<branch>.vcs-parent          # determine <parent-branch>
-  git branch --show-current                            # in master worktree (only without recorded <parent-branch>)
-  git fetch --quiet origin                             # (only with an "origin" remote)
-  git merge --quiet --ff-only origin/<parent-branch>   # in worktree of <parent-branch> (if behind), or
+  git config --get branch.<branch>.vcs-parent                                    # determine <parent-branch>
+  git branch --show-current                                                      # in master worktree (only without recorded <parent-branch>)
+  git fetch --quiet origin                                                       # (only with an "origin" remote)
+  git merge --quiet --ff-only origin/<parent-branch>                             # in worktree of <parent-branch> (if behind), or
   git update-ref refs/heads/<parent-branch> refs/remotes/origin/<parent-branch>  # (if not checked out)
-  git for-each-ref --format=... refs/heads/<branch>    # (only in master worktree: determine <remote>/<upstream-branch>)
-  git fetch --quiet <remote>                           # (only in master worktree: use <remote>/<upstream-branch> as <parent-branch>)
-  git merge-base --is-ancestor <parent-branch> HEAD    # (stop here, if already up-to-date)
-  git stash push --quiet --include-untracked           # (only with uncommitted changes)
+  git for-each-ref --format=... refs/heads/<branch>                              # (only in master worktree: determine <remote>/<upstream-branch>)
+  git fetch --quiet <remote>                                                     # (only in master worktree: use <remote>/<upstream-branch> as <parent-branch>)
+  git merge-base --is-ancestor <parent-branch> HEAD                              # (stop here, if already up-to-date)
+  git stash push --quiet --include-untracked                                     # (only with uncommitted changes)
   git rebase --quiet <parent-branch>
-  vcs resolve                                          # (only on conflicts, see "resolve")
-  git stash pop --quiet                                # (only with stashed changes)
-  vcs resolve                                          # (only on conflicts, see "resolve")
-  git reset --quiet && git stash drop --quiet          # (only on resolved conflicts)
+  vcs resolve                                                                    # (only on conflicts, see "resolve")
+  git stash pop --quiet                                                          # (only with stashed changes)
+  vcs resolve                                                                    # (only on conflicts, see "resolve")
+  git reset --quiet && git stash drop --quiet                                    # (only on resolved conflicts)
   ```
 
 - `merge`:
 
   ```sh
-  git config --get branch.<branch>.vcs-parent          # determine <parent-branch>
-  git branch --show-current                            # in master worktree (only without recorded <parent-branch>)
-  git stash push --quiet --include-untracked           # in worktree of <parent-branch> (only with uncommitted changes)
+  git config --get branch.<branch>.vcs-parent            # determine <parent-branch>
+  git branch --show-current                              # in master worktree (only without recorded <parent-branch>)
+  git stash push --quiet --include-untracked             # in worktree of <parent-branch> (only with uncommitted changes)
 
   # mode "merge" (in worktree of <parent-branch>)
   git merge --quiet --no-ff --no-edit <branch>
-  vcs resolve                                          # (only on conflicts, see "resolve")
-  git commit --quiet --no-edit                         # (only on resolved conflicts)
+  vcs resolve                                            # (only on conflicts, see "resolve")
+  git commit --quiet --no-edit                           # (only on resolved conflicts)
 
   # mode "squash" (in worktree of <parent-branch>)
   git -c merge.ff=true merge --quiet --squash <branch>
-  vcs resolve                                          # (only on conflicts, see "resolve")
-  git commit --quiet --no-edit                         # (only with staged changes)
+  vcs resolve                                            # (only on conflicts, see "resolve")
+  git commit --quiet --no-edit                           # (only with staged changes)
 
   # mode "rebase"
-  git merge-base --is-ancestor <parent-branch> HEAD    # in <worktree> (skip rebase steps, if already up-to-date)
-  git stash push --quiet --include-untracked           # in <worktree> (only with uncommitted changes)
-  git rebase --quiet <parent-branch>                   # in <worktree>
-  vcs resolve                                          # in <worktree> (only on conflicts, see "resolve")
-  git rebase --abort                                   # in <worktree> (only on unresolved conflicts)
-  git stash pop --quiet                                # in <worktree> (only with stashed changes)
-  vcs resolve                                          # in <worktree> (only on conflicts, see "resolve")
-  git reset --quiet && git stash drop --quiet          # in <worktree> (only on resolved conflicts)
-  git merge --quiet --ff-only <branch>                 # in worktree of <parent-branch>
+  git merge-base --is-ancestor <parent-branch> HEAD      # in <worktree> (skip rebase steps, if already up-to-date)
+  git stash push --quiet --include-untracked             # in <worktree> (only with uncommitted changes)
+  git rebase --quiet <parent-branch>                     # in <worktree>
+  vcs resolve                                            # in <worktree> (only on conflicts, see "resolve")
+  git rebase --abort                                     # in <worktree> (only on unresolved conflicts)
+  git stash pop --quiet                                  # in <worktree> (only with stashed changes)
+  vcs resolve                                            # in <worktree> (only on conflicts, see "resolve")
+  git reset --quiet && git stash drop --quiet            # in <worktree> (only on resolved conflicts)
+  git merge --quiet --ff-only <branch>                   # in worktree of <parent-branch>
 
-  git reset --quiet --merge                            # (only on unresolved conflicts in modes "merge" and "squash")
+  git reset --quiet --merge                              # (only on unresolved conflicts in modes "merge" and "squash")
   git merge-base --is-ancestor <branch> <parent-branch>  # (not in mode "squash")
-  git stash pop --quiet                                # in worktree of <parent-branch> (only with stashed changes)
-  vcs resolve                                          # (only on conflicts, see "resolve")
-  git reset --quiet && git stash drop --quiet          # (only on resolved conflicts)
+  git stash pop --quiet                                  # in worktree of <parent-branch> (only with stashed changes)
+  vcs resolve                                            # (only on conflicts, see "resolve")
+  git reset --quiet && git stash drop --quiet            # (only on resolved conflicts)
   ```
 
 - `resolve`:
 
   ```sh
-  git status --porcelain=v1 -z                         # determine and classify unmerged files
-  cp <file> .git/.../vcs-resolve/<head>-<theirs>/      # back up all conflicted files
-  git rm --quiet -- <file>                             # (only for delete/delete conflicts)
-  git checkout --ours|--theirs -- <file>               # (only for binary conflicts changed on one side only)
-  git update-index --cacheinfo <mode>,<oid>,<file>     # (only for submodule conflicts changed on one side only)
-  claude -p <prompt> ...                               # (only for remaining conflicts)
-  git add -- <file> ...                                # stage all fully resolved files
-  git -c core.editor=true <operation> --continue       # (only with in-progress operation; repeatedly on rebase)
+  git status --porcelain=v1 -z                      # determine and classify unmerged files
+  cp <file> .git/.../vcs-resolve/<head>-<theirs>/   # back up all conflicted files
+  git rm --quiet -- <file>                          # (only for delete/delete conflicts)
+  git checkout --ours|--theirs -- <file>            # (only for binary conflicts changed on one side only)
+  git update-index --cacheinfo <mode>,<oid>,<file>  # (only for submodule conflicts changed on one side only)
+  claude -p <prompt> ...                            # (only for remaining conflicts)
+  git add -- <file> ...                             # stage all fully resolved files
+  git -c core.editor=true <operation> --continue    # (only with in-progress operation; repeatedly on rebase)
   ```
 
 - `shuffle`:
 
   ```sh
   # in current worktree: snapshot into a stash-like commit (current worktree stays untouched)
-  GIT_INDEX_FILE=<tmp-index> git add --all             # (on a copy of the index)
-  GIT_INDEX_FILE=<tmp-index> git write-tree            # determine <working-tree>
-  git write-tree                                       # determine <index-tree>
-  git commit-tree <index-tree> -p HEAD -m "vcs shuffle: index"  # determine <index-commit>
+  GIT_INDEX_FILE=<tmp-index> git add --all                                                 # (on a copy of the index)
+  GIT_INDEX_FILE=<tmp-index> git write-tree                                                # determine <working-tree>
+  git write-tree                                                                           # determine <index-tree>
+  git commit-tree <index-tree> -p HEAD -m "vcs shuffle: index"                             # determine <index-commit>
   git commit-tree <working-tree> -p HEAD -p <index-commit> -m "vcs shuffle: working copy"  # determine <commit>
 
   # in <worktree>: apply snapshot
-  git add --all                                        # (only with uncommitted changes)
-  git commit --quiet --no-verify --no-gpg-sign -m "vcs shuffle: temporary commit"  # (only with uncommitted changes)
+  git add --all                                                                            # (only with uncommitted changes)
+  git commit --quiet --no-verify --no-gpg-sign -m "vcs shuffle: temporary commit"          # (only with uncommitted changes)
   git stash apply --quiet <commit>
-  vcs resolve                                          # (only on conflicts, see "resolve")
-  git reset --quiet HEAD~1                             # (only with temporary commit), or
-  git reset --quiet                                    # (only without temporary commit)
+  vcs resolve                                                                              # (only on conflicts, see "resolve")
+  git reset --quiet HEAD~1                                                                 # (only with temporary commit), or
+  git reset --quiet                                                                        # (only without temporary commit)
 
   # in current worktree
   vcs clean
@@ -301,9 +301,9 @@ each operation runs in and the conditions under which it happens.
 - `clean`:
 
   ```sh
-  git <operation> --abort                              # (only with in-progress operation)
+  git <operation> --abort            # (only with in-progress operation)
   git reset --quiet --hard HEAD
-  git clean --quiet --force -d [-x]                    # ("-x" only with option "-i")
+  git clean --quiet --force -d [-x]  # ("-x" only with option "-i")
   ```
 
 - `rename`:
@@ -312,9 +312,9 @@ each operation runs in and the conditions under which it happens.
   git worktree repair <worktree-old>
   git worktree move <worktree-old> <worktree-new>
   mv .git/worktrees/<worktree-old> .git/worktrees/<worktree-new>  # (and adjust ".git" file of worktree)
-  git branch -m <worktree-old> <worktree-new>          # (only if branch is named after worktree)
-  git config branch.<child>.vcs-parent <worktree-new>  # (only for child branches)
-  ln -s <worktree-new> active                          # (only if worktree was active, atomically)
+  git branch -m <worktree-old> <worktree-new>                     # (only if branch is named after worktree)
+  git config branch.<child>.vcs-parent <worktree-new>             # (only for child branches)
+  ln -s <worktree-new> active                                     # (only if worktree was active, atomically)
   ```
 
 - `destroy`:
