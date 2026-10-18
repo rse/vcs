@@ -35,6 +35,7 @@ $ vcs active   [-v <num>] [-d <basedir>]
 $ vcs activate [-v <num>] [-d <basedir>] [<worktree>]
 $ vcs fork     [-v <num>] [-d <basedir>] [-b <branch>] <worktree> [<parent-branch>]
 $ vcs checkout [-v <num>] [-d <basedir>] [-b <branch>] <worktree> [<parent-branch>]
+$ vcs parent   [-v <num>] [-d <basedir>] <worktree> [<parent-branch>]
 $ vcs sync     [-v <num>] [-d <basedir>] [-s] [<worktree>]
 $ vcs merge    [-v <num>] [-d <basedir>] [-m merge|rebase|squash] [-s] [<worktree>]
 $ vcs resolve  [-v <num>] [-d <basedir>] [-s] [<worktree>]
@@ -84,6 +85,11 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   `<parent-branch>` is recorded (default: the parent branch already
   recorded on `fork` is kept). Without any recorded parent branch,
   the branch of the master worktree is used as the parent branch.
+- `parent <worktree> [<parent-branch>]`<br/>
+  Record the parent branch `<parent-branch>` for the branch of the
+  worktree, e.g., for a worktree not created with `fork` or `checkout`.
+  Without `<parent-branch>`, show the recorded parent branch (or the
+  branch of the master worktree, if none is recorded).
 - `sync [-s] [<worktree>]`<br/>
   Fetch `origin`, fast-forward the parent branch, and rebase the
   worktree (default: the worktree containing the current directory) onto
@@ -192,6 +198,14 @@ each operation runs in and the conditions under which it happens.
   git worktree prune
   git worktree list --porcelain                        # ensure <branch> is not checked out elsewhere
   git worktree add --quiet <worktree> <branch>
+  git config branch.<branch>.vcs-parent <parent-branch>  # (only with <parent-branch>)
+  ```
+
+- `parent`:
+
+  ```sh
+  git config --get branch.<branch>.vcs-parent          # (only without <parent-branch>)
+  git branch --show-current                            # in master worktree (only without recorded <parent-branch>)
   git config branch.<branch>.vcs-parent <parent-branch>  # (only with <parent-branch>)
   ```
 
