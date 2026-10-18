@@ -95,7 +95,11 @@ export const currentBranch = async (dir: string) => {
 
 /*  determine recorded parent branch of a branch  */
 export const parentBranch = async (dir: string, branch: string) => {
-    const result = await git(dir, [ "config", "--get", `branch.${branch}.vcsParent` ], "determine the recorded parent branch")
+    let result = await git(dir, [ "config", "--get", `branch.${branch}.vcs-parent` ], "determine the recorded parent branch")
+
+    /*  fallback to legacy key "vcsParent" (vcs <= 0.9.6)  */
+    if (result.failed || result.stdout === "")
+        result = await git(dir, [ "config", "--get", `branch.${branch}.vcsParent` ], "determine the recorded parent branch (legacy key)")
     if (result.failed || result.stdout === "")
         throw new Error(`no parent branch recorded for branch "${branch}"`)
     return result.stdout

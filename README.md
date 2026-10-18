@@ -180,7 +180,7 @@ each operation runs in and the conditions under which it happens.
   ```sh
   git branch --show-current                            # in active worktree (only without <parent-branch>)
   git worktree add --quiet -b <branch> <worktree> <parent-branch>
-  git config branch.<branch>.vcsParent <parent-branch>
+  git config branch.<branch>.vcs-parent <parent-branch>
   ```
 
 - `checkout`:
@@ -189,13 +189,13 @@ each operation runs in and the conditions under which it happens.
   git worktree prune
   git worktree list --porcelain                        # ensure <branch> is not checked out elsewhere
   git worktree add --quiet <worktree> <branch>
-  git config branch.<branch>.vcsParent <parent-branch>  # (only with <parent-branch>)
+  git config branch.<branch>.vcs-parent <parent-branch>  # (only with <parent-branch>)
   ```
 
 - `sync`:
 
   ```sh
-  git config --get branch.<branch>.vcsParent           # determine <parent-branch>
+  git config --get branch.<branch>.vcs-parent          # determine <parent-branch>
   git fetch --quiet origin                             # (only with an "origin" remote)
   git merge --quiet --ff-only origin/<parent-branch>   # in worktree of <parent-branch> (if behind), or
   git update-ref refs/heads/<parent-branch> refs/remotes/origin/<parent-branch>  # (if not checked out)
@@ -213,7 +213,7 @@ each operation runs in and the conditions under which it happens.
 - `merge`:
 
   ```sh
-  git config --get branch.<branch>.vcsParent           # determine <parent-branch>
+  git config --get branch.<branch>.vcs-parent          # determine <parent-branch>
   git branch --show-current                            # in master worktree (only without recorded <parent-branch>)
   git stash push --quiet --include-untracked           # in worktree of <parent-branch> (only with uncommitted changes)
 
@@ -295,7 +295,7 @@ each operation runs in and the conditions under which it happens.
   git worktree move <worktree-old> <worktree-new>
   mv .git/worktrees/<worktree-old> .git/worktrees/<worktree-new>  # (and adjust ".git" file of worktree)
   git branch -m <worktree-old> <worktree-new>          # (only if branch is named after worktree)
-  git config branch.<child>.vcsParent <worktree-new>   # (only for child branches)
+  git config branch.<child>.vcs-parent <worktree-new>  # (only for child branches)
   ln -s <worktree-new> active                          # (only if worktree was active, atomically)
   ```
 

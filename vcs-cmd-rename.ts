@@ -86,9 +86,9 @@ export const commandRename = (program: Command) => {
             /*  rename branch (Git moves its config section) and re-point child branches  */
             if (newBranch !== branch) {
                 await gitOK(newDir, [ "branch", "-m", branch, newBranch ], "rename the branch")
-                const children = await git(master, [ "config", "--get-regexp", "^branch\\..+\\.vcsparent$" ], "list the recorded parent branches")
+                const children = await git(master, [ "config", "--get-regexp", "^branch\\..+\\.vcs-?parent$" ], "list the recorded parent branches")
                 for (const line of children.failed ? [] : children.stdout.split("\n")) {
-                    const c = line.match(/^(branch\..+\.vcsparent) (.*)$/i)
+                    const c = line.match(/^(branch\..+\.vcs-?parent) (.*)$/)
                     if (c !== null && c[2] === branch)
                         await gitOK(master, [ "config", c[1], newBranch ], "re-point the recorded parent branch of a child branch")
                 }

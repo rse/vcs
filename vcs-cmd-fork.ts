@@ -60,7 +60,7 @@ export const commandFork = (program: Command) => {
                 throw new Error(`parent branch "${parent}" does not exist`)
             const branch = opts.branch ?? worktree
             await gitOK(master, [ "worktree", "add", "--quiet", "-b", branch, dir, parent ], "create the worktree with a new branch")
-            await gitOK(master, [ "config", `branch.${branch}.vcsParent`, parent ], "record the parent branch")
+            await gitOK(master, [ "config", `branch.${branch}.vcs-parent`, parent ], "record the parent branch")
             info(`worktree "${worktree}" created with branch "${branch}" (parent branch "${parent}")`)
         })
 }
