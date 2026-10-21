@@ -35,6 +35,7 @@ $ vcs activate [-v <num>] [-d <basedir>] [<worktree>]
 $ vcs fork     [-v <num>] [-d <basedir>] [-b <branch>] <worktree> [<parent-branch>]
 $ vcs checkout [-v <num>] [-d <basedir>] [-b <branch>] <worktree> [<parent-branch>]
 $ vcs parent   [-v <num>] [-d <basedir>] <worktree> [<parent-branch>]
+$ vcs diff     [-v <num>] [-d <basedir>] [<worktree>]
 $ vcs sync     [-v <num>] [-d <basedir>] [-s] [<worktree>]
 $ vcs merge    [-v <num>] [-d <basedir>] [-m merge|rebase|squash] [-s] [<worktree>]
 $ vcs resolve  [-v <num>] [-d <basedir>] [-s] [<worktree>]
@@ -97,6 +98,14 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   worktree, e.g., for a worktree not created with `fork` or `checkout`.
   Without `<parent-branch>`, show the recorded parent branch (or the
   branch of the master worktree, if none is recorded).
+
+- `diff [<worktree>]`<br/>
+  Show a unified diff of the changes of the worktree (default: the
+  worktree containing the current directory) against its parent branch,
+  i.e., of the committed and uncommitted changes (excluding untracked
+  files) since the fork point (the merge base). For a worktree without
+  a recorded parent branch, the branch of the master worktree is used
+  as the parent branch.
 
 - `sync [-s] [<worktree>]`<br/>
   Fetch `origin`, fast-forward the parent branch, and rebase the
@@ -222,6 +231,15 @@ each operation runs in and the conditions under which it happens.
   git config --get branch.<branch>.vcs-parent            # (only without <parent-branch>)
   git branch --show-current                              # in master worktree (only without recorded <parent-branch>)
   git config branch.<branch>.vcs-parent <parent-branch>  # (only with <parent-branch>)
+  ```
+
+- `diff`:
+
+  ```sh
+  git rev-parse --show-toplevel                # (only without <worktree>)
+  git config --get branch.<branch>.vcs-parent  # determine <parent-branch>
+  git branch --show-current                    # in master worktree (only without recorded <parent-branch>)
+  git diff --merge-base <parent-branch>
   ```
 
 - `sync`:

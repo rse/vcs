@@ -39,6 +39,7 @@ import { commandActivate } from "./vcs-cmd-activate.js"
 import { commandFork }     from "./vcs-cmd-fork.js"
 import { commandCheckout } from "./vcs-cmd-checkout.js"
 import { commandParent }   from "./vcs-cmd-parent.js"
+import { commandDiff }     from "./vcs-cmd-diff.js"
 import { commandSync }     from "./vcs-cmd-sync.js"
 import { commandMerge }    from "./vcs-cmd-merge.js"
 import { commandResolve }  from "./vcs-cmd-resolve.js"
@@ -67,6 +68,7 @@ import { commandDestroy }  from "./vcs-cmd-destroy.js"
     commandFork(program)
     commandCheckout(program)
     commandParent(program)
+    commandDiff(program)
     commandSync(program)
     commandMerge(program)
     commandResolve(program)
