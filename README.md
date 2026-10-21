@@ -42,7 +42,7 @@ $ vcs resolve  [-v <num>] [-d <basedir>] [-s] [<worktree>]
 $ vcs shuffle  [-v <num>] [-d <basedir>] [-s] <worktree>
 $ vcs clean    [-v <num>] [-d <basedir>] [-i] [<worktree>]
 $ vcs rename   [-v <num>] [-d <basedir>] <worktree-old> <worktree-new>
-$ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
+$ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
 ```
 
 - `-v <num>`, `--verbose <num>`<br/>
@@ -161,11 +161,14 @@ $ vcs destroy  [-v <num>] [-d <basedir>] <worktree>
   is renamed, too, and child branches are re-pointed to it. If the
   worktree was active, the renamed worktree is activated.
 
-- `destroy <worktree>`<br/>
+- `destroy [-f] <worktree>`<br/>
   Remove the worktree and its branch, if the branch has landed on its
   parent branch. For a worktree without a recorded parent branch, the
-  branch of the master worktree is used as the parent branch. If the
-  worktree was active, the master worktree is activated.
+  branch of the master worktree is used as the parent branch. With
+  `-f`, the worktree and its branch are removed even if the worktree
+  has uncommitted changes or the branch has not landed, i.e., unmerged
+  work is lost. If the worktree was active, the master worktree is
+  activated.
 
 - `-s`, `--safe`<br/>
   Never touch non-content conflicts (binary, submodule, modify/delete,
@@ -355,10 +358,10 @@ each operation runs in and the conditions under which it happens.
   ```sh
   git config --get branch.<branch>.vcs-parent            # determine <parent-branch>
   git branch --show-current                              # in master worktree (only without recorded <parent-branch>)
-  git merge-base --is-ancestor <branch> <parent-branch>  # check whether branch landed, or else
-  git merge-tree --write-tree <parent-branch> <branch>   # check whether squashed branch landed
+  git merge-base --is-ancestor <branch> <parent-branch>  # check whether branch landed, or else (not with "-f")
+  git merge-tree --write-tree <parent-branch> <branch>   # check whether squashed branch landed (not with "-f")
   ln -s <master> active                                  # (only if worktree was active, atomically)
-  git worktree remove <worktree>
+  git worktree remove [--force] <worktree>               # ("--force" only with option "-f")
   git branch --quiet -D <branch>
   ```
 
