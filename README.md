@@ -36,6 +36,7 @@ $ vcs fork     [-v <num>] [-d <basedir>] [-b <branch>] <worktree> [<parent-branc
 $ vcs checkout [-v <num>] [-d <basedir>] [-b <branch>] <worktree> [<parent-branch>]
 $ vcs parent   [-v <num>] [-d <basedir>] <worktree> [<parent-branch>]
 $ vcs diff     [-v <num>] [-d <basedir>] [<worktree>]
+$ vcs status   [-v <num>] [-d <basedir>] [<worktree>]
 $ vcs sync     [-v <num>] [-d <basedir>] [-s] [<worktree>]
 $ vcs merge    [-v <num>] [-d <basedir>] [-m merge|rebase|squash] [-s] [<worktree>]
 $ vcs resolve  [-v <num>] [-d <basedir>] [-s] [<worktree>]
@@ -106,6 +107,16 @@ $ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
   files) since the fork point (the merge base). For a worktree without
   a recorded parent branch, the branch of the master worktree is used
   as the parent branch.
+
+- `status [<worktree>]`<br/>
+  List the relative paths of all files of the worktree (default: the
+  worktree containing the current directory) changed against its parent
+  branch since the fork point (the merge base), each prefixed with
+  `U` (unstaged, including untracked), `S` (staged), or `C` (committed),
+  followed by `A` (added), `M` (modified), or `R` (removed).
+  A file changed in multiple ways is prefixed by its most recent change.
+  For a worktree without a recorded parent branch, the branch of the
+  master worktree is used as the parent branch.
 
 - `sync [-s] [<worktree>]`<br/>
   Fetch `origin`, fast-forward the parent branch, and rebase the
@@ -244,6 +255,18 @@ each operation runs in and the conditions under which it happens.
   git config --get branch.<branch>.vcs-parent  # determine <parent-branch>
   git branch --show-current                    # in master worktree (only without recorded <parent-branch>)
   git diff --merge-base <parent-branch>
+  ```
+
+- `status`:
+
+  ```sh
+  git rev-parse --show-toplevel                                             # (only without <worktree>)
+  git config --get branch.<branch>.vcs-parent                               # determine <parent-branch>
+  git branch --show-current                                                 # in master worktree (only without recorded <parent-branch>)
+  git diff --name-status -z --no-renames --merge-base <parent-branch> HEAD  # committed files
+  git diff --name-status -z --no-renames --cached                           # staged files
+  git diff --name-status -z --no-renames                                    # unstaged files
+  git ls-files --others --exclude-standard -z                               # untracked files
   ```
 
 - `sync`:
