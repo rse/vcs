@@ -323,6 +323,7 @@ each operation runs in and the conditions under which it happens.
 
   git reset --quiet --merge                              # (only on unresolved conflicts in modes "merge" and "squash")
   git merge-base --is-ancestor <branch> <parent-branch>  # (not in mode "squash")
+  git config branch.<branch>.vcs-squashed <commit>       # (only in mode "squash": record tip of <branch>)
   git stash pop --quiet                                  # in worktree of <parent-branch> (only with stashed changes)
   vcs resolve                                            # (only on conflicts, see "resolve")
   git reset --quiet && git stash drop --quiet            # (only on resolved conflicts)
@@ -388,6 +389,7 @@ each operation runs in and the conditions under which it happens.
   git config --get branch.<branch>.vcs-parent            # determine <parent-branch>
   git branch --show-current                              # in master worktree (only without recorded <parent-branch>)
   git merge-base --is-ancestor <branch> <parent-branch>  # check whether branch landed, or else (not with "-f")
+  git config --get branch.<branch>.vcs-squashed          # check whether tip of branch was squashed, or else (not with "-f")
   git merge-tree --write-tree <parent-branch> <branch>   # check whether squashed branch landed (not with "-f")
   ln -s <master> active                                  # (only if worktree was active, atomically)
   git worktree remove [--force] <worktree>               # ("--force" only with option "-f")

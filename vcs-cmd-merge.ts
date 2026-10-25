@@ -162,6 +162,11 @@ export const commandMerge = (program: Command) => {
                         "run \"git stash pop\" there to restore them")
                 throw err
             }
+
+            /*  record the squashed branch tip, as a squash leaves no ancestry for "destroy" to check  */
+            if (opts.mode === "squash")
+                await gitOK(pdir, [ "config", `branch.${branch}.vcs-squashed`,
+                    await gitOK(pdir, [ "rev-parse", branch ], "determine the tip of the branch") ], "record the squashed branch tip")
             info(`worktree "${worktree}" (branch "${branch}") merged into parent branch "${parent}" (mode: ${opts.mode})`)
 
             /*  restore stashed changes of parent worktree, resolving conflicts  */

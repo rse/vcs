@@ -66,12 +66,18 @@ export const commandDestroy = (program: Command) => {
             if (!opts.force)
                 await ensureClean(dir)
 
-            /*  ensure the branch landed on its parent branch (by merge, rebase, or squash)  */
+            /*  ensure the branch landed on its parent branch (by merge, rebase, or squash),
+                where a squash is detected by the branch tip recorded by "merge" (as its
+                conflict resolutions cannot be reproduced) or by an idempotent re-merge  */
             if (!opts.force && (await git(master, [ "merge-base", "--is-ancestor", branch, parent ], "check whether the branch is contained in the parent branch")).failed) {
-                const tree  = await git(master, [ "merge-tree", "--write-tree", parent, branch ], "determine the tree of a merge of the branch into the parent branch")
-                const ptree = await gitOK(master, [ "rev-parse", `${parent}^{tree}` ], "determine the tree of the parent branch")
-                if (tree.failed || tree.stdout.split("\n")[0] !== ptree)
-                    throw new Error(`branch "${branch}" is not merged into parent branch "${parent}"`)
+                const squashed = await git(master, [ "config", "--get", `branch.${branch}.vcs-squashed` ], "determine the recorded squashed branch tip")
+                const tip      = await gitOK(master, [ "rev-parse", branch ], "determine the tip of the branch")
+                if (squashed.failed || squashed.stdout !== tip) {
+                    const tree  = await git(master, [ "merge-tree", "--write-tree", parent, branch ], "determine the tree of a merge of the branch into the parent branch")
+                    const ptree = await gitOK(master, [ "rev-parse", `${parent}^{tree}` ], "determine the tree of the parent branch")
+                    if (tree.failed || tree.stdout.split("\n")[0] !== ptree)
+                        throw new Error(`branch "${branch}" is not merged into parent branch "${parent}"`)
+                }
             }
 
             /*  remove worktree and branch (from within the master worktree, as
