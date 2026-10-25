@@ -177,13 +177,13 @@ export const resolveAndContinue = async (dir: string, safe: boolean): Promise<Re
 /*  report the escalated conflicts  */
 export const report = async (res: Resolution) => {
     for (const e of res.escalations) {
-        process.stderr.write(`${chalk.yellow("▶")} ${e.file}:${e.lines} (${e.kind}): ${e.reason}\n`)
+        info(`${chalk.yellow("▶")} ${e.file}:${e.lines} (${e.kind}): ${e.reason}`)
         if (e.ours !== "")
-            process.stderr.write(`    ${chalk.grey("ours:")}   ${e.ours}\n`)
+            info(`    ${chalk.grey("ours:")}   ${e.ours}`)
         if (e.theirs !== "")
-            process.stderr.write(`    ${chalk.grey("theirs:")} ${e.theirs}\n`)
+            info(`    ${chalk.grey("theirs:")} ${e.theirs}`)
     }
     if (res.escalations.length > 0 && res.backupDir !== "" && (await exists(res.backupDir)))
-        process.stderr.write(`    ${chalk.grey("backups:")} ${res.backupDir}\n`)
+        info(`    ${chalk.grey("backups:")} ${res.backupDir}`)
 }
 
