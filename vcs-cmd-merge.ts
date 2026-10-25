@@ -31,7 +31,7 @@ import { Command, Option } from "commander"
 
 /*  own requirements  */
 import {
-    info, git, gitOK
+    info, git, gitOK, gitTTY
 } from "./vcs-util-base.js"
 import {
     findBasedir, worktreeDir, masterName, currentBranch, parentBranch, branchDir,
@@ -49,10 +49,13 @@ export const commandMerge = (program: Command) => {
     program.command("merge")
         .description("merge a worktree into its parent branch")
         .option("-d, --basedir <basedir>", "base directory")
-        .addOption(new Option("-m, --mode <mode>", "merge mode").choices([ "merge", "rebase", "squash" ]).default("rebase"))
+        .addOption(new Option("-m, --mode <mode>", "merge mode").choices([ "merge", "rebase", "squash" ]).default("squash"))
+        .option("-i, --interactive", "interactively edit the commit message (mode \"squash\" only)", false)
         .option("-s, --safe", "never touch non-content conflicts", false)
         .argument("[worktree]", "worktree to merge (default: worktree of current directory)")
-        .action(async (worktree: string | undefined, opts: { basedir?: string, mode: "merge" | "rebase" | "squash", safe: boolean }) => {
+        .action(async (worktree: string | undefined, opts: { basedir?: string, mode: "merge" | "rebase" | "squash", interactive: boolean, safe: boolean }) => {
+            if (opts.interactive && opts.mode !== "squash")
+                throw new Error("option \"--interactive\" is supported in mode \"squash\" only")
             const basedir = await findBasedir(opts.basedir)
 
             /*  default to worktree containing the current directory  */
@@ -137,8 +140,17 @@ export const commandMerge = (program: Command) => {
                             throw new Error(`merge of branch "${branch}" into "${parent}" aborted due to unresolved conflicts`)
                         }
                     }
-                    if (result.failed || (opts.mode === "squash" && (await git(pdir, [ "diff", "--cached", "--quiet" ], "check for staged changes")).failed))
-                        await gitOK(pdir, [ "commit", "--quiet", "--no-edit" ], "commit the merge")
+                    if (result.failed || (opts.mode === "squash" && (await git(pdir, [ "diff", "--cached", "--quiet" ], "check for staged changes")).failed)) {
+                        if (opts.interactive) {
+                            /*  commit with the message edited via $GIT_EDITOR, core.editor, $VISUAL, or $EDITOR  */
+                            if ((await gitTTY(pdir, [ "commit", "--quiet", "--edit" ], "commit the merge with an edited message")).failed) {
+                                await git(pdir, [ "reset", "--quiet", "--merge" ], "abort the merge with an aborted commit")
+                                throw new Error(`merge of branch "${branch}" into "${parent}" aborted due to aborted commit`)
+                            }
+                        }
+                        else
+                            await gitOK(pdir, [ "commit", "--quiet", "--no-edit" ], "commit the merge")
+                    }
                 }
                 if (opts.mode !== "squash" && (await git(pdir, [ "merge-base", "--is-ancestor", branch, parent ], "check whether the branch landed on the parent branch")).failed)
                     throw new Error(`branch "${branch}" not contained in branch "${parent}" after merge`)

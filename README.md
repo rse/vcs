@@ -38,7 +38,7 @@ $ vcs parent   [-v <num>] [-d <basedir>] <worktree> [<parent-branch>]
 $ vcs diff     [-v <num>] [-d <basedir>] [<worktree>]
 $ vcs status   [-v <num>] [-d <basedir>] [<worktree>]
 $ vcs sync     [-v <num>] [-d <basedir>] [-s] [<worktree>]
-$ vcs merge    [-v <num>] [-d <basedir>] [-m merge|rebase|squash] [-s] [<worktree>]
+$ vcs merge    [-v <num>] [-d <basedir>] [-m merge|rebase|squash] [-i] [-s] [<worktree>]
 $ vcs resolve  [-v <num>] [-d <basedir>] [-s] [<worktree>]
 $ vcs shuffle  [-v <num>] [-d <basedir>] [-s] <worktree>
 $ vcs clean    [-v <num>] [-d <basedir>] [-i] [<worktree>]
@@ -132,11 +132,14 @@ $ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
   itself, its upstream branch (like `origin/master`) is fetched from
   its remote and used instead of the parent branch.
 
-- `merge [-m merge|rebase|squash] [-s] [<worktree>]`<br/>
+- `merge [-m merge|rebase|squash] [-i] [-s] [<worktree>]`<br/>
   Merge the worktree (default: the worktree containing the current
   directory) into its parent branch with a merge commit (`merge`),
-  a rebase and fast-forward (`rebase`, default), or a single squashed
-  commit (`squash`), resolving conflicts. For a worktree without a
+  a rebase and fast-forward (`rebase`), or a single squashed
+  commit (`squash`, default), resolving conflicts. With `-i` (mode `squash`
+  only), the message of the squashed commit is edited with the editor
+  of Git (`$GIT_EDITOR`, `core.editor`, `$VISUAL`, or `$EDITOR`), and an
+  empty message aborts the merge. For a worktree without a
   recorded parent branch, the branch of the master worktree is used
   as the parent branch. Only the committed changes
   of the worktree are merged. On unresolvable conflicts, the
@@ -303,7 +306,9 @@ each operation runs in and the conditions under which it happens.
   # mode "squash" (in worktree of <parent-branch>)
   git -c merge.ff=true merge --quiet --squash <branch>
   vcs resolve                                            # (only on conflicts, see "resolve")
-  git commit --quiet --no-edit                           # (only with staged changes)
+  git commit --quiet --no-edit                           # (only with staged changes, without "-i"), or
+  git commit --quiet --edit                              # (only with staged changes, with "-i")
+  git reset --quiet --merge                              # (only on aborted commit, with "-i")
 
   # mode "rebase"
   git merge-base --is-ancestor <parent-branch> HEAD      # in <worktree> (skip rebase steps, if already up-to-date)

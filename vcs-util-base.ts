@@ -66,6 +66,12 @@ export const gitOK = async (dir: string, args: string[], what: string, env: Reco
     return result.stdout
 }
 
+/*  execute a Git command interactively (with inherited standard I/O, e.g., for an editor)  */
+export const gitTTY = (dir: string, args: string[], what: string, env: Record<string, string> = {}) => {
+    trace("git", [ "-C", dir, ...args ], what, env)
+    return execa("git", [ "-C", dir, ...args ], { reject: false, stdio: "inherit", env })
+}
+
 /*  check for existing path  */
 export const exists = (p: string) =>
     fs.promises.access(p).then(() => true, () => false)
