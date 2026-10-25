@@ -27,16 +27,20 @@ import path                from "node:path"
 
 /*  external requirements  */
 import { Command }         from "commander"
+import chalk               from "chalk"
 
 /*  own requirements  */
 import {
-    info, git, gitOK
+    info, git, gitOK, exists, quote
 } from "./vcs-util-base.js"
 import {
     findBasedir, worktreeDir, masterName, currentBranch, parentBranch, branchDir,
     operation
 } from "./vcs-util-repo.js"
-import { report }          from "./vcs-util-resolve.js"
+import {
+    type Resolution,
+    report
+} from "./vcs-util-resolve.js"
 import {
     rebase, stashPush, stashPop
 } from "./vcs-util-sync.js"
@@ -71,6 +75,55 @@ const refreshBranch = async (dir: string, branch: string) => {
         await gitOK(bdir, [ "merge", "--quiet", "--ff-only", remote ], "fast-forward the checked-out branch")
     else
         await gitOK(dir, [ "update-ref", `refs/heads/${branch}`, remote ], "fast-forward the not checked-out branch")
+}
+
+/*  output hints on the expected next steps after escalated conflicts
+    of the rebase or of the restoration of the stashed changes  */
+const hintNextSteps = async (res: Resolution, mode: "rebase" | "stash", stashed: boolean) => {
+    const files = [ ...new Map(res.escalations.map((e) => [ e.file, e.kind ])) ]
+    const list  = files.map(([ file ]) => quote(file)).join(" ")
+    const steps: [ string, ...string[] ][] = []
+    if (mode === "rebase")
+        steps.push([ "inspect the changes of the replayed commit", `git show REBASE_HEAD -- ${list}` ])
+    else
+        steps.push([ "inspect the stashed changes", `git diff stash@{0}^1 stash@{0} -- ${list}` ])
+    for (const [ file, kind ] of files) {
+        const f = quote(file)
+        if (kind === "modify/delete")
+            steps.push([ `keep or delete "${file}"`,
+                `git add -- ${f}  # keep`,
+                `git rm -- ${f}   # delete` ])
+        else if (kind === "binary")
+            steps.push([ `take one side of "${file}"`,
+                `git checkout --ours -- ${f} && git add -- ${f}    # take ours`,
+                `git checkout --theirs -- ${f} && git add -- ${f}  # take theirs` ])
+        else if (kind === "content")
+            steps.push([ `edit the conflict markers in "${file}" and stage it`, `git add -- ${f}` ])
+        else
+            steps.push([ `resolve "${file}" (${kind}) and stage it`, `git add -- ${f}` ])
+    }
+    if (mode === "rebase") {
+        steps.push([ "continue the rebase", "git rebase --continue" ])
+        steps.push([ "resolve further conflicts of the continued rebase (if any)", "vcs resolve" ])
+        if (stashed)
+            steps.push([ "restore the stashed changes", "git stash pop" ])
+    }
+    else {
+        steps.push([ "unstage the restored changes", "git reset" ])
+        steps.push([ "drop the stash kept on conflicts", "git stash drop" ])
+    }
+    if (res.backupDir !== "" && (await exists(res.backupDir)))
+        steps.push([ "remove the backups", `rm -rf ${quote(res.backupDir)}` ])
+    info("next steps:")
+    steps.forEach(([ what, ...cmds ], i) => {
+        info(`  ${i + 1}. ${what}:`)
+        for (const cmd of cmds)
+            info(`     ${chalk.blue(`$ ${cmd}`)}`)
+    })
+    if (mode === "rebase") {
+        info("  or abandon the synchronization instead:")
+        info(`     ${chalk.blue(`$ git rebase --abort${stashed ? " && git stash pop" : ""}`)}`)
+    }
 }
 
 /*  command: sync  */
@@ -128,8 +181,8 @@ export const commandSync = (program: Command) => {
             })
             if (res !== null && res.verdict === "PARTIAL") {
                 await report(res)
-                info("rebase left in progress: resolve the escalated conflicts manually, " +
-                    `stage them, and run "git rebase --continue"${stashNote}`)
+                info("rebase left in progress with escalated conflicts to be resolved manually")
+                await hintNextSteps(res, "rebase", stashed)
                 process.exitCode = 1
                 return
             }
@@ -138,8 +191,8 @@ export const commandSync = (program: Command) => {
             const pres = stashed ? await stashPop(dir, opts.safe) : null
             if (pres !== null) {
                 await report(pres)
-                info("stashed changes restored with conflicts: resolve the escalated conflicts manually, " +
-                    "and run \"git reset\" and \"git stash drop\"")
+                info("stashed changes restored with escalated conflicts to be resolved manually")
+                await hintNextSteps(pres, "stash", stashed)
                 process.exitCode = 1
                 return
             }

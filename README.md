@@ -114,7 +114,8 @@ $ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
   the parent branch, nothing else happens. Uncommitted changes
   (including untracked files) are stashed before and restored after the
   rebase, resolving conflicts, too. On unresolvable conflicts, the
-  rebase or restoration is left in progress for manual resolution.
+  rebase or restoration is left in progress for manual resolution,
+  and the expected next steps are hinted with their Git commands.
   For a worktree without a recorded parent branch, the branch of the
   master worktree is used as the parent branch. For the master worktree
   itself, its upstream branch (like `origin/master`) is fetched from

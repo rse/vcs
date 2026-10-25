@@ -40,13 +40,16 @@ export const info = (msg: string) => {
     process.stderr.write(`${chalk.blue("vcs:")} ${msg}\n`)
 }
 
+/*  quote an argument for the shell  */
+export const quote = (arg: string) =>
+    /^[A-Za-z0-9_.,:/@=+%^{}-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, "'\\''")}'`
+
 /*  output a command (preceded by its comment) to be executed  */
 export const trace = (cmd: string, args: string[], what: string, env: Record<string, string> = {}) => {
     if (verbose >= 2)
         process.stderr.write(`# ${what}\n`)
     if (verbose >= 1) {
-        const quote = (arg: string) => /^[A-Za-z0-9_.,:/@=+%^{}-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, "'\\''")}'`
-        const vars  = Object.entries(env).map(([ k, v ]) => `${k}=${quote(v)}`)
+        const vars = Object.entries(env).map(([ k, v ]) => `${k}=${quote(v)}`)
         process.stderr.write(`${chalk.blue(`$ ${[ ...vars, ...[ cmd, ...args ].map(quote) ].join(" ")}`)}\n`)
     }
 }

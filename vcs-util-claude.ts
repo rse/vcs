@@ -178,6 +178,19 @@ Procedure:
     ]
     trace("claude", args.map((arg, i) => i === 1 ? "<prompt>" : i === 6 ? "<schema>" : arg),
         "semantically resolve the conflicted files via Claude")
+    /*  determine the conflicted file a tool use refers to (by its file path or command)  */
+    const conflictOf = (input: Record<string, unknown>) => {
+        const file = typeof input.file_path === "string" ? path.resolve(root, input.file_path) : ""
+        const cmd  = typeof input.command   === "string" ? input.command : ""
+        return conflicts
+            .filter((c) => file !== "" ?
+                (file === path.join(root, c.file) || file === path.join(backupDir, c.file)) :
+                cmd.includes(c.file))
+            .sort((a, b) => b.file.length - a.file.length)[0]
+    }
+    const seen = new Set<string>()
+    let current = ""
+
     const subprocess = execa("claude", args, { cwd: root, reject: false, stdin: "ignore" })
     let output: AIResult | null = null
     for await (const line of subprocess) {
@@ -203,13 +216,27 @@ Procedure:
             for (const block of response.message?.content ?? []) {
                 if (block.type === "text" && verbose >= 2 && (block.text ?? "").trim() !== "")
                     process.stderr.write((block.text ?? "").trim().split("\n").map((l) => `# ${l}\n`).join(""))
-                else if (block.type === "tool_use" && verbose >= 1 && block.name !== "StructuredOutput") {
-                    const input  = block.input ?? {}
-                    const file   = typeof input.file_path === "string" ? input.file_path : ""
-                    const detail = typeof input.command === "string" ? input.command :
-                        file !== "" ? (file.startsWith(root + path.sep) ? path.relative(root, file) : file) :
-                            JSON.stringify(input)
-                    process.stderr.write(`${chalk.red(`claude> ${block.name}: ${detail.replace(/\s*\n\s*/g, " ")}`)}\n`)
+                else if (block.type === "tool_use" && block.name !== "StructuredOutput") {
+                    const input = block.input ?? {}
+
+                    /*  report the progress whenever Claude switches to another conflicted file  */
+                    const c = conflictOf(input)
+                    if (c !== undefined && c.file !== current) {
+                        current = c.file
+                        if (seen.has(c.file))
+                            info(`${chalk.blue("▷")} revisiting ${c.file}`)
+                        else {
+                            seen.add(c.file)
+                            info(`${chalk.blue("▷")} resolving ${c.file} [${seen.size}/${conflicts.length}]`)
+                        }
+                    }
+                    if (verbose >= 1) {
+                        const file   = typeof input.file_path === "string" ? input.file_path : ""
+                        const detail = typeof input.command === "string" ? input.command :
+                            file !== "" ? (file.startsWith(root + path.sep) ? path.relative(root, file) : file) :
+                                JSON.stringify(input)
+                        process.stderr.write(`${chalk.red(`claude> ${block.name}: ${detail.replace(/\s*\n\s*/g, " ")}`)}\n`)
+                    }
                 }
             }
         }
