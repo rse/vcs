@@ -6,7 +6,7 @@
     "bugs":               { "url":  "https://github.com/rse/vcs/issues" },
     "description":        "Worktree Management for Git Version Control System",
     "keywords":           [ "git", "worktree", "branch", "merge", "rebase", "conflict", "resolve" ],
-    "version":            "0.9.13",
+    "version":            "0.9.14",
     "license":            "MIT",
     "author": {
         "name":           "Dr. Ralf S. Engelschall",
