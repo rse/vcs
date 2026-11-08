@@ -59,7 +59,7 @@ $ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
   directory or the nearest parent directory containing an `active`
   symbolic link (for `init`: the current directory).
 
-- `init [-r <repo-url>]`<br/>
+- `init [-r|--repo <repo-url>]`<br/>
   Create the basedir with a clone of the Git repository `<repo-url>`
   in the master worktree, named after the default branch of the
   repository, and activate it. If a master worktree already exists,
@@ -80,13 +80,13 @@ $ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
   directory, determined via its Git root) by re-pointing the `active`
   symbolic link.
 
-- `fork [-b <branch>] <worktree> [<parent-branch>]`<br/>
+- `fork [-b|--branch <branch>] <worktree> [<parent-branch>]`<br/>
   Create the worktree with the new branch `<branch>` (default:
   `<worktree>`), based on the parent branch `<parent-branch>` (default:
   the branch of the active worktree). The parent branch is recorded for
   `sync`, `merge`, and `destroy`.
 
-- `checkout [-b <branch>] <worktree> [<parent-branch>]`<br/>
+- `checkout [-b|--branch <branch>] <worktree> [<parent-branch>]`<br/>
   Create the worktree for the already existing branch `<branch>`
   (default: `<worktree>`), which is not checked out in any other
   worktree, e.g., after its worktree directory was removed. The
@@ -119,7 +119,7 @@ $ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
   For a worktree without a recorded parent branch, the branch of the
   master worktree is used as the parent branch.
 
-- `sync [-s] [<worktree>]`<br/>
+- `sync [-s|--safe] [<worktree>]`<br/>
   Fetch `origin`, fast-forward the parent branch, and rebase the
   worktree (default: the worktree containing the current directory) onto
   it, resolving conflicts. If the worktree is already up-to-date with
@@ -133,7 +133,7 @@ $ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
   itself, its upstream branch (like `origin/master`) is fetched from
   its remote and used instead of the parent branch.
 
-- `merge [-m merge|rebase|squash] [-i] [-s] [<worktree>]`<br/>
+- `merge [-m|--mode merge|rebase|squash] [-i|--interactive] [-s|--safe] [<worktree>]`<br/>
   Merge the worktree (default: the worktree containing the current
   directory) into its parent branch with a merge commit (`merge`),
   a rebase and fast-forward (`rebase`), or a single squashed
@@ -151,11 +151,11 @@ $ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
   are stashed before and restored after the rebase (if the worktree is
   not already up-to-date with the parent branch), resolving conflicts, too.
 
-- `resolve [-s] [<worktree>]`<br/>
+- `resolve [-s|--safe] [<worktree>]`<br/>
   Resolve the conflicts in the worktree (default: the worktree containing
   the current directory) and continue its in-progress operation.
 
-- `shuffle [-s] <worktree>`<br/>
+- `shuffle [-s|--safe] <worktree>`<br/>
   Move all staged, unstaged, and untracked files of the worktree
   containing the current directory into the working copy of the
   worktree `<worktree>`, where they stay uncommitted, resolving
@@ -165,7 +165,7 @@ $ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
   the current worktree is kept untouched for manual resolution in the
   other worktree.
 
-- `uncommit [-a] [<worktree>]`<br/>
+- `uncommit [-a|--all] [<worktree>]`<br/>
   Undo the last commit of the worktree (default: the worktree containing
   the current directory), similar to `git reset --soft HEAD~1`, or with `-a`
   all commits since the fork point (the merge base) with its parent branch,
@@ -174,7 +174,7 @@ $ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
   recorded parent branch, the branch of the master worktree is used as the
   parent branch.
 
-- `clean [-i] [<worktree>]`<br/>
+- `clean [-i|--ignored] [<worktree>]`<br/>
   Abort any in-progress operation of the worktree (default: the worktree
   containing the current directory), reset it to its `HEAD`, and remove
   all untracked files (with `-i` also all ignored files), so the
@@ -186,7 +186,7 @@ $ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
   is renamed, too, and child branches are re-pointed to it. If the
   worktree was active, the renamed worktree is activated.
 
-- `destroy [-f] <worktree>`<br/>
+- `destroy [-f|--force] <worktree>`<br/>
   Remove the worktree and its branch, if the branch has landed on its
   parent branch. For a worktree without a recorded parent branch, the
   branch of the master worktree is used as the parent branch. With
