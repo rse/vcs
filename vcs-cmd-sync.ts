@@ -162,7 +162,10 @@ export const commandSync = (program: Command) => {
             }
 
             /*  short-circuit processing if already up-to-date  */
-            if (!(await git(dir, [ "merge-base", "--is-ancestor", parent, "HEAD" ], "check whether the parent branch is already contained")).failed) {
+            const contained = await git(dir, [ "merge-base", "--is-ancestor", parent, "HEAD" ], "check whether the parent branch is already contained")
+            if (contained.failed && contained.exitCode !== 1)
+                throw new Error(`failed to check ${target}: ${(contained.stderr || contained.stdout).trim()}`)
+            if (!contained.failed) {
                 info(`worktree "${worktree}" already up-to-date with ${target}`)
                 return
             }
@@ -173,13 +176,12 @@ export const commandSync = (program: Command) => {
 
             /*  rebase onto parent branch  */
             const res = await rebase(dir, parent, opts.safe).catch(async (err: unknown) => {
-                if (stashed && (await operation(dir)) === "none")
-                    await gitOK(dir, [ "stash", "pop", "--quiet" ], "restore the stashed changes after failure")
-                else if (stashed)
+                if (stashed && ((await operation(dir)) !== "none"
+                    || (await git(dir, [ "stash", "pop", "--quiet" ], "restore the stashed changes after failure")).failed))
                     info(`uncommitted changes remain stashed${stashNote}`)
                 throw err
             })
-            if (res !== null && res.verdict === "PARTIAL") {
+            if (res?.verdict === "PARTIAL") {
                 await report(res)
                 info("rebase left in progress with escalated conflicts to be resolved manually")
                 await hintNextSteps(res, "rebase", stashed)

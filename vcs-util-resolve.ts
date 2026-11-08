@@ -46,7 +46,7 @@ import {
 } from "./vcs-util-claude.js"
 
 /*  type definitions  */
-type Verdict    = "NONE" | "RESOLVED" | "PARTIAL"
+type Verdict           = "NONE" | "RESOLVED" | "PARTIAL"
 export type Resolution = { verdict: Verdict, operation: Operation, escalations: Escalation[], backupDir: string }
 
 /*  resolve the conflicts of the in-progress operation of a worktree  */
@@ -54,11 +54,10 @@ export const resolveConflicts = async (dir: string, safe: boolean): Promise<Reso
     const root   = await gitOK(dir, [ "rev-parse", "--show-toplevel" ], "determine the root directory of the worktree")
     const gitDir = await gitOK(dir, [ "rev-parse", "--absolute-git-dir" ], "determine the Git directory of the worktree")
     const op     = await operation(root)
-    let theirs   = theirsRefs.find(([ , o ]) => o === op)?.[0] ?? ""
-    const other  = theirs !== "" ? await git(root, [ "rev-parse", "--verify", "--quiet", theirs ], "determine the commit of the other side") : null
+    const ref    = theirsRefs.find(([ , o ]) => o === op)?.[0] ?? ""
+    const other  = ref !== "" ? await git(root, [ "rev-parse", "--verify", "--quiet", ref ], "determine the commit of the other side") : null
     const oid    = other !== null && !other.failed ? other.stdout : ""
-    if (oid === "")
-        theirs = ""
+    const theirs = oid !== "" ? ref : ""
 
     /*  determine and classify unmerged files  */
     const conflicts = await classifyConflicts(root)
@@ -77,7 +76,7 @@ export const resolveConflicts = async (dir: string, safe: boolean): Promise<Reso
     const escalate = (c: Conflict, reason: string) =>
         escalations.push({ file: c.file, lines: "*", kind: c.kind, ours: "", theirs: "", reason })
     const toStage: string[] = []
-    const toAI: Conflict[] = []
+    const toAI: Conflict[]  = []
     for (const c of conflicts) {
         if (c.kind === "content")
             toAI.push(c)
@@ -138,9 +137,11 @@ export const resolveConflicts = async (dir: string, safe: boolean): Promise<Reso
             for (const file of result.touched) {
                 const abs = path.resolve(root, file)
                 const rel = path.relative(root, abs)
-                if (!abs.startsWith(root + path.sep) || toAI.some((c) => c.file === rel))
+                if (!abs.startsWith(root + path.sep) || conflicts.some((c) => c.file === rel) || !(await exists(abs)))
                     continue
-                if ((await exists(abs)) && !(await hasMarkers(abs)))
+                if (await hasMarkers(abs))
+                    escalate({ file: rel, kind: "content" }, "leftover conflict markers")
+                else
                     toStage.push(rel)
             }
         }

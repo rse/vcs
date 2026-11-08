@@ -82,10 +82,10 @@ export const commandDestroy = (program: Command) => {
 
             /*  remove worktree and branch (from within the master worktree, as
                 the current directory might be inside the removed worktree)  */
-            if ((await fs.promises.readlink(path.join(basedir, "active"))) === worktree)
-                await setActive(basedir, name)
             process.chdir(master)
             await gitOK(master, [ "worktree", "remove", ...(opts.force ? [ "--force" ] : []), dir ], "remove the worktree")
+            if ((await fs.promises.readlink(path.join(basedir, "active"))) === worktree)
+                await setActive(basedir, name)
             await gitOK(master, [ "branch", "--quiet", "-D", branch ], "delete the branch")
             info(`worktree "${worktree}" and branch "${branch}" destroyed`)
         })

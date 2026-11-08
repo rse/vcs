@@ -97,7 +97,7 @@ export const currentBranch = async (dir: string) => {
 export const parentBranch = async (dir: string, branch: string) => {
     let result = await git(dir, [ "config", "--get", `branch.${branch}.vcs-parent` ], "determine the recorded parent branch")
 
-    /*  fallback to legacy key "vcsParent" (vcs <= 0.9.6)  */
+    /*  fall back to legacy key "vcsParent" (vcs <= 0.9.6)  */
     if (result.failed || result.stdout === "")
         result = await git(dir, [ "config", "--get", `branch.${branch}.vcsParent` ], "determine the recorded parent branch (legacy key)")
     if (result.failed || result.stdout === "")
@@ -117,11 +117,13 @@ export const branchDir = async (dir: string, branch: string) => {
     return ""
 }
 
-/*  determine in-progress Git operation  */
+/*  refs of the other side ("theirs") of the in-progress Git operations  */
 export const theirsRefs: [ string, Operation ][] = [
     [ "MERGE_HEAD", "merge" ], [ "REBASE_HEAD", "rebase" ],
     [ "CHERRY_PICK_HEAD", "cherry-pick" ], [ "REVERT_HEAD", "revert" ]
 ]
+
+/*  determine in-progress Git operation  */
 export const operation = async (dir: string): Promise<Operation> => {
     /*  detect rebase by its state directories only, as Git can leave a stale REBASE_HEAD behind  */
     const states: [ string, Operation ][] = [

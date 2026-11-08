@@ -14,7 +14,7 @@ export default [
         ignores: pluginStd.resolveIgnoresFromGitignore()
     }),
     {
-        files:   [ "**/*.ts" ],
+        files: [ "**/*.ts" ],
         ignores: [ "dst/" ],
         languageOptions: {
             ecmaVersion: 2022,

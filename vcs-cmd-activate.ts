@@ -23,6 +23,7 @@
 */
 
 /*  internal requirements  */
+import fs                  from "node:fs"
 import path                from "node:path"
 
 /*  external requirements  */
@@ -44,8 +45,12 @@ export const commandActivate = (program: Command) => {
             const basedir = await findBasedir(opts.basedir)
 
             /*  default to worktree containing the current directory  */
-            if (worktree === undefined)
-                worktree = path.basename(await gitOK(process.cwd(), [ "rev-parse", "--show-toplevel" ], "determine the worktree of the current directory"))
+            if (worktree === undefined) {
+                const toplevel = await gitOK(process.cwd(), [ "rev-parse", "--show-toplevel" ], "determine the worktree of the current directory")
+                if (path.dirname(toplevel) !== await fs.promises.realpath(basedir))
+                    throw new Error(`current directory is not located in a worktree under basedir "${basedir}"`)
+                worktree = path.basename(toplevel)
+            }
             await worktreeDir(basedir, worktree)
             await setActive(basedir, worktree)
         })

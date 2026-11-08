@@ -176,8 +176,9 @@ Procedure:
         "--add-dir", backupDir,
         "--no-session-persistence"
     ]
-    trace("claude", args.map((arg, i) => i === 1 ? "<prompt>" : i === 6 ? "<schema>" : arg),
+    trace("claude", args.map((arg, i) => args[i - 1] === "-p" ? "<prompt>" : args[i - 1] === "--json-schema" ? "<schema>" : arg),
         "semantically resolve the conflicted files via Claude")
+
     /*  determine the conflicted file a tool use refers to (by its file path or command)  */
     const conflictOf = (input: Record<string, unknown>) => {
         const file = typeof input.file_path === "string" ? path.resolve(root, input.file_path) : ""
@@ -186,11 +187,14 @@ Procedure:
             .filter((c) => file !== "" ?
                 (file === path.join(root, c.file) || file === path.join(backupDir, c.file)) :
                 cmd.includes(c.file))
-            .sort((a, b) => b.file.length - a.file.length)[0]
+            .sort((a, b) => b.file.length - a.file.length).at(0)
     }
+
+    /*  track the conflicted files Claude already worked on  */
     const seen = new Set<string>()
     let current = ""
 
+    /*  run Claude and process its streamed JSON responses  */
     const subprocess = execa("claude", args, { cwd: root, reject: false, stdin: "ignore" })
     let output: AIResult | null = null
     for await (const line of subprocess) {
@@ -214,8 +218,8 @@ Procedure:
         else if (response.type === "assistant") {
             /*  show the actions (and under verbosity level 2 also the comments) of Claude  */
             for (const block of response.message?.content ?? []) {
-                if (block.type === "text" && verbose >= 2 && (block.text ?? "").trim() !== "")
-                    process.stderr.write((block.text ?? "").trim().split("\n").map((l) => `# ${l}\n`).join(""))
+                if (block.type === "text" && verbose >= 2 && block.text?.trim())
+                    process.stderr.write(block.text.trim().split("\n").map((l) => `# ${l}\n`).join(""))
                 else if (block.type === "tool_use" && block.name !== "StructuredOutput") {
                     const input = block.input ?? {}
 
@@ -246,6 +250,8 @@ Procedure:
         info(`Claude invocation failed: ${(result.stderr || result.stdout).trim()}`)
         return null
     }
+    if (output === null)
+        info("Claude reported no structured resolution result")
     return output
 }
 

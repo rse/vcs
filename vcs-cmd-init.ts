@@ -80,9 +80,9 @@ export const commandInit = (program: Command) => {
         .option("-r, --repo <repo-url>", "URL of the Git repository to clone (required if no master worktree exists)")
         .action(async (opts: { basedir: string, repo?: string }) => {
             const basedir = path.resolve(opts.basedir)
-            const master  = await findMaster(basedir)
             if (await isSymlink(path.join(basedir, "active")))
                 throw new Error(`basedir "${basedir}" is already initialized`)
+            const master = await findMaster(basedir)
             if (master !== null && opts.repo !== undefined)
                 throw new Error(`option "--repo" not applicable, as master worktree "${master}" already exists`)
             if (master !== null) {

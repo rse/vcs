@@ -44,7 +44,7 @@ export const classifyConflicts = async (root: string) => {
     const conflicts: Conflict[] = []
     const status = await gitOK(root, [ "-c", "core.quotepath=off", "status", "--porcelain=v1", "-z" ], "list the status of all files")
     for (const entry of status.split("\0")) {
-        const m = entry.match(/^(UU|AA|UD|DU|AU|UA|DD) (.+)$/)
+        const m = entry.match(/^(UU|AA|UD|DU|AU|UA|DD) (.+)$/s)
         if (m === null)
             continue
         const [ , code, file ] = m

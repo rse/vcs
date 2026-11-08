@@ -61,12 +61,12 @@ export const commandMerge = (program: Command) => {
             /*  default to worktree containing the current directory  */
             if (worktree === undefined)
                 worktree = path.basename(await gitOK(process.cwd(), [ "rev-parse", "--show-toplevel" ], "determine the worktree of the current directory"))
-            const dir     = await worktreeDir(basedir, worktree)
-            const branch  = await currentBranch(dir)
-            const parent  = await parentBranch(dir, branch).catch(async () => currentBranch(path.join(basedir, await masterName(basedir))))
+            const dir    = await worktreeDir(basedir, worktree)
+            const branch = await currentBranch(dir)
+            const parent = await parentBranch(dir, branch).catch(async () => currentBranch(path.join(basedir, await masterName(basedir))))
             if (parent === branch)
                 throw new Error(`branch "${branch}" cannot be merged into itself`)
-            const fop     = await operation(dir)
+            const fop = await operation(dir)
             if (fop !== "none")
                 throw new Error(`worktree "${dir}" has an in-progress ${fop} operation`)
             const pdir = await branchDir(dir, parent)
@@ -148,8 +148,13 @@ export const commandMerge = (program: Command) => {
                                 throw new Error(`merge of branch "${branch}" into "${parent}" aborted due to aborted commit`)
                             }
                         }
-                        else
-                            await gitOK(pdir, [ "commit", "--quiet", "--no-edit" ], "commit the merge")
+                        else {
+                            const commit = await git(pdir, [ "commit", "--quiet", "--no-edit" ], "commit the merge")
+                            if (commit.failed) {
+                                await git(pdir, [ "reset", "--quiet", "--merge" ], "abort the merge with a failed commit")
+                                throw new Error(`merge of branch "${branch}" into "${parent}" failed: ${(commit.stderr || commit.stdout).trim()}`)
+                            }
+                        }
                     }
                 }
                 if (opts.mode !== "squash" && (await git(pdir, [ "merge-base", "--is-ancestor", branch, parent ], "check whether the branch landed on the parent branch")).failed)

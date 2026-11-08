@@ -52,6 +52,8 @@ const snapshot = async (dir: string) => {
         await gitOK(dir, [ "add", "--all" ], "add all files to a temporary index", { GIT_INDEX_FILE: tmp })
         return gitOK(dir, [ "write-tree" ], "write the tree of the working copy", { GIT_INDEX_FILE: tmp })
     })().finally(() => fs.promises.rm(tmp, { force: true }))
+
+    /*  create stash-like commits of the index and working copy trees  */
     const itree   = await gitOK(dir, [ "write-tree" ], "write the tree of the index")
     const head    = await gitOK(dir, [ "rev-parse", "HEAD" ], "determine the current commit")
     const icommit = await gitOK(dir, [ "commit-tree", itree, "-p", head, "-m", "vcs shuffle: index" ], "create the commit of the index")
@@ -88,14 +90,14 @@ export const commandShuffle = (program: Command) => {
 
             /*  snapshot current worktree and temporarily commit uncommitted changes of target worktree
                 (as "git stash apply" refuses to merge into dirty files)  */
-            const commit = await snapshot(sdir)
-            const temp   = (await gitOK(tdir, [ "status", "--porcelain" ], "check for uncommitted changes")) !== ""
-            if (temp) {
+            const commit     = await snapshot(sdir)
+            const tempCommit = (await gitOK(tdir, [ "status", "--porcelain" ], "check for uncommitted changes")) !== ""
+            if (tempCommit) {
                 await gitOK(tdir, [ "add", "--all" ], "stage the uncommitted changes of the target worktree")
                 await gitOK(tdir, [ "commit", "--quiet", "--no-verify", "--no-gpg-sign", "-m", "vcs shuffle: temporary commit" ],
                     "temporarily commit the uncommitted changes of the target worktree")
             }
-            const uncommit = temp ? [ "reset", "--quiet", "HEAD~1" ] : [ "reset", "--quiet" ]
+            const uncommit = tempCommit ? [ "reset", "--quiet", "HEAD~1" ] : [ "reset", "--quiet" ]
             const hint     = `run "git ${uncommit.filter((arg) => arg !== "--quiet").join(" ")}" there`
 
             /*  apply snapshot onto target worktree, resolving conflicts  */
@@ -117,14 +119,14 @@ export const commandShuffle = (program: Command) => {
                 }
             }
             catch (err: unknown) {
-                if (temp && (await hasUnmerged(tdir)))
+                if (tempCommit && (await hasUnmerged(tdir)))
                     info(`uncommitted changes of worktree "${worktree}" remain temporarily committed -- ` +
                         `after resolving the conflicts, ${hint}`)
                 throw err
             }
 
             /*  undo temporary commit and unstage all files of target worktree  */
-            await gitOK(tdir, uncommit, temp ?
+            await gitOK(tdir, uncommit, tempCommit ?
                 "undo the temporary commit of the target worktree" :
                 "unstage the shuffled files")
 

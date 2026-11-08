@@ -71,13 +71,15 @@ export const commandCheckout = (program: Command) => {
 
             /*  create worktree and record or reuse parent branch  */
             await gitOK(master, [ "worktree", "add", "--quiet", dir, branch ], "create the worktree for the existing branch")
-            if (parent !== undefined)
+            if (parent !== undefined) {
                 await gitOK(master, [ "config", `branch.${branch}.vcs-parent`, parent ], "record the parent branch")
+                await git(master, [ "config", "--unset", `branch.${branch}.vcsParent` ], "remove the legacy recorded parent branch")
+            }
             else
                 parent = await parentBranch(master, branch).catch(() => undefined)
             info(`worktree "${worktree}" created for existing branch "${branch}" ` +
                 (parent !== undefined ? `(parent branch "${parent}")` :
-                    `(no parent branch recorded, defaulting to master branch "${await currentBranch(master)}")`))
+                    `(no parent branch recorded, defaulting to master branch "${await currentBranch(master).catch(() => "HEAD")}")`))
         })
 }
 

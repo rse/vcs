@@ -42,7 +42,7 @@ export const info = (msg: string) => {
 
 /*  quote an argument for the shell  */
 export const quote = (arg: string) =>
-    /^[A-Za-z0-9_.,:/@=+%^{}-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, "'\\''")}'`
+    /^[A-Za-z0-9_.,:/@=+%^-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, "'\\''")}'`
 
 /*  output a command (preceded by its comment) to be executed  */
 export const trace = (cmd: string, args: string[], what: string, env: Record<string, string> = {}) => {

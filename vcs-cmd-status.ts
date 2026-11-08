@@ -61,8 +61,8 @@ export const commandStatus = (program: Command) => {
             const kinds: Record<string, string> = { A: "A", D: "R" }
             const layers: [ string, string[], string ][] = [
                 [ "C", [ "diff", "--name-status", "-z", "--no-renames", "--merge-base", parent, "HEAD" ], "determine the committed files" ],
-                [ "S", [ "diff", "--name-status", "-z", "--no-renames", "--cached" ],                    "determine the staged files" ],
-                [ "U", [ "diff", "--name-status", "-z", "--no-renames" ],                                "determine the unstaged files" ]
+                [ "S", [ "diff", "--name-status", "-z", "--no-renames", "--cached" ],                     "determine the staged files" ],
+                [ "U", [ "diff", "--name-status", "-z", "--no-renames" ],                                 "determine the unstaged files" ]
             ]
             for (const [ mark, args, what ] of layers) {
                 const fields = (await gitOK(dir, args, what)).split("\0").filter((f) => f !== "")
@@ -74,11 +74,10 @@ export const commandStatus = (program: Command) => {
                 files.set(file, [ "U", "A" ])
 
             /*  output files sorted by path  */
-            const markColor: Record<string, (s: string) => string> = { U: chalk.red,  S: chalk.blue, C: chalk.black }
-            const kindColor: Record<string, (s: string) => string> = { A: chalk.blue, R: chalk.red,  M: chalk.black }
-            for (const file of [ ...files.keys() ].sort()) {
-                const [ mark, kind ] = files.get(file)!
+            const markColor: Record<string, (s: string) => string> = { U: chalk.red,  S: chalk.blue, C: chalk.reset }
+            const kindColor: Record<string, (s: string) => string> = { A: chalk.blue, R: chalk.red,  M: chalk.reset }
+            for (const [ file, [ mark, kind ] ] of [ ...files ].sort(([ a ], [ b ]) => a < b ? -1 : 1))
                 info(`${chalk.blue("▶")} ${markColor[mark](mark)} ${chalk.blue("▷")} ${kindColor[kind](kind)}: ${file}`)
-            }
         })
 }
+

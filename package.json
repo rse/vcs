@@ -1,9 +1,9 @@
 {
     "name":               "@rse/vcs",
     "publishConfig":      { "access": "public" },
-    "homepage":           "http://github.com/rse/vcs",
+    "homepage":           "https://github.com/rse/vcs",
     "repository":         { "type": "git", "url":  "git+https://github.com/rse/vcs.git" },
-    "bugs":               { "url":  "http://github.com/rse/vcs/issues" },
+    "bugs":               { "url":  "https://github.com/rse/vcs/issues" },
     "description":        "Worktree Management for Git Version Control System",
     "keywords":           [ "git", "worktree", "branch", "merge", "rebase", "conflict", "resolve" ],
     "version":            "0.9.13",
@@ -25,7 +25,7 @@
         "@rse/stx":       "1.1.7",
         "shx":            "0.4.0"
     },
-    "dependencies" : {
+    "dependencies": {
         "commander":      "15.0.0",
         "execa":          "10.0.1",
         "chalk":          "6.0.1",

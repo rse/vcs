@@ -55,7 +55,7 @@ export const rebase = async (dir: string, parent: string, safe: boolean): Promis
 /*  stash uncommitted changes of a worktree (including untracked files), but, for a
     subsequent rebase onto a branch, only if they could actually interfere with it  */
 export const stashPush = async (dir: string, message: string, onto = "") => {
-    if ((await gitOK(dir, [ "status", "--porcelain" ], "check for uncommitted changes")) === "")
+    if ((await gitOK(dir, [ "status", "--porcelain", "--untracked-files=normal" ], "check for uncommitted changes")) === "")
         return false
     if (onto !== "" && (await gitOK(dir, [ "status", "--porcelain", "--untracked-files=no" ], "check for uncommitted changes of tracked files")) === "") {
         /*  with untracked files only, a rebase is affected just by untracked files (or their
@@ -90,7 +90,7 @@ export const stashPop = async (dir: string, safe: boolean): Promise<Resolution |
         if (res.verdict === "PARTIAL")
             return res
 
-        /*  unstage restored changes and drop the (on conflicts kept) stash  */
+        /*  unstage restored changes and drop the stash (kept by Git on conflicts)  */
         await gitOK(dir, [ "reset", "--quiet" ], "unstage the restored changes")
         await gitOK(dir, [ "stash", "drop", "--quiet" ], "drop the stash kept on conflicts")
     }

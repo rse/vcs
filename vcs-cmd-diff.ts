@@ -27,11 +27,10 @@ import path                from "node:path"
 
 /*  external requirements  */
 import { Command }         from "commander"
-import { execa }           from "execa"
 
 /*  own requirements  */
 import {
-    trace, gitOK
+    gitOK, gitTTY
 } from "./vcs-util-base.js"
 import {
     findBasedir, worktreeDir, masterName, currentBranch, parentBranch
@@ -57,11 +56,9 @@ export const commandDiff = (program: Command) => {
 
             /*  show unified diff of committed and uncommitted changes since the fork point
                 (with stdio inherited, so Git can apply its pager and colors)  */
-            const args = [ "-C", dir, "diff", "--merge-base", parent ]
-            trace("git", args, "show the changes against the parent branch")
-            const result = await execa("git", args, { reject: false, stdio: "inherit" })
+            const result = await gitTTY(dir, [ "diff", "--merge-base", parent ], "show the changes against the parent branch")
             if (result.failed)
-                throw new Error(`command "git ${args.slice(2).join(" ")}" failed`)
+                throw new Error(`command "git diff --merge-base ${parent}" failed`)
         })
 }
 
