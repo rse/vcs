@@ -41,6 +41,7 @@ $ vcs sync     [-v <num>] [-d <basedir>] [-s] [<worktree>]
 $ vcs merge    [-v <num>] [-d <basedir>] [-m merge|rebase|squash] [-i] [-s] [<worktree>]
 $ vcs resolve  [-v <num>] [-d <basedir>] [-s] [<worktree>]
 $ vcs shuffle  [-v <num>] [-d <basedir>] [-s] <worktree>
+$ vcs uncommit [-v <num>] [-d <basedir>] [-a] [<worktree>]
 $ vcs clean    [-v <num>] [-d <basedir>] [-i] [<worktree>]
 $ vcs rename   [-v <num>] [-d <basedir>] <worktree-old> <worktree-new>
 $ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
@@ -163,6 +164,15 @@ $ vcs destroy  [-v <num>] [-d <basedir>] [-f] <worktree>
   current worktree is cleaned (see `clean`). On unresolvable conflicts,
   the current worktree is kept untouched for manual resolution in the
   other worktree.
+
+- `uncommit [-a] [<worktree>]`<br/>
+  Undo the last commit of the worktree (default: the worktree containing
+  the current directory), similar to `git reset --soft HEAD~1`, or with `-a`
+  all commits since the fork point (the merge base) with its parent branch,
+  so their changes become staged changes again. Only commits made on the
+  branch since the fork point can be undone. For a worktree without a
+  recorded parent branch, the branch of the master worktree is used as the
+  parent branch.
 
 - `clean [-i] [<worktree>]`<br/>
   Abort any in-progress operation of the worktree (default: the worktree
@@ -362,6 +372,18 @@ each operation runs in and the conditions under which it happens.
 
   # in current worktree
   vcs clean
+  ```
+
+- `uncommit`:
+
+  ```sh
+  git rev-parse --show-toplevel                # (only without <worktree>)
+  git config --get branch.<branch>.vcs-parent  # determine <parent-branch>
+  git branch --show-current                    # in master worktree (only without recorded <parent-branch>)
+  git merge-base <parent-branch> HEAD          # determine <fork-point>
+  git rev-list --count <fork-point>..HEAD      # ensure commits since <fork-point>
+  git reset --quiet --soft HEAD~1              # (without "-a"), or
+  git reset --quiet --soft <fork-point>        # (with "-a")
   ```
 
 - `clean`:

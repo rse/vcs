@@ -45,6 +45,7 @@ import { commandSync }     from "./vcs-cmd-sync.js"
 import { commandMerge }    from "./vcs-cmd-merge.js"
 import { commandResolve }  from "./vcs-cmd-resolve.js"
 import { commandShuffle }  from "./vcs-cmd-shuffle.js"
+import { commandUncommit } from "./vcs-cmd-uncommit.js"
 import { commandClean }    from "./vcs-cmd-clean.js"
 import { commandRename }   from "./vcs-cmd-rename.js"
 import { commandDestroy }  from "./vcs-cmd-destroy.js"
@@ -75,6 +76,7 @@ import { commandDestroy }  from "./vcs-cmd-destroy.js"
     commandMerge(program)
     commandResolve(program)
     commandShuffle(program)
+    commandUncommit(program)
     commandClean(program)
     commandRename(program)
     commandDestroy(program)
