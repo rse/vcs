@@ -190,9 +190,10 @@ Procedure:
             .sort((a, b) => b.file.length - a.file.length).at(0)
     }
 
-    /*  track the conflicted files Claude already worked on  */
+    /*  track the conflicted files Claude already worked on and its current phase  */
     const seen = new Set<string>()
     let current = ""
+    let phase   = ""
 
     /*  run Claude and process its streamed JSON responses  */
     const subprocess = execa("claude", args, { cwd: root, reject: false, stdin: "ignore" })
@@ -223,16 +224,25 @@ Procedure:
                 else if (block.type === "tool_use" && block.name !== "StructuredOutput") {
                     const input = block.input ?? {}
 
-                    /*  report the progress whenever Claude switches to another conflicted file  */
-                    const c = conflictOf(input)
+                    /*  report the progress whenever Claude switches to another conflicted file
+                        (first "resolve", then "verify" on reading or "revise" on editing it again)  */
+                    const c    = conflictOf(input)
+                    const edit = block.name === "Edit" || block.name === "Write"
                     if (c !== undefined && c.file !== current) {
                         current = c.file
-                        if (seen.has(c.file))
-                            info(`${chalk.blue("▷")} revisiting ${c.file}`)
-                        else {
+                        if (!seen.has(c.file)) {
                             seen.add(c.file)
-                            info(`${chalk.blue("▷")} resolving ${c.file} [${seen.size}/${conflicts.length}]`)
+                            phase = "resolve"
+                            info(`${chalk.blue("▷")} resolve    ${c.file} [${seen.size}/${conflicts.length}]`)
                         }
+                        else {
+                            phase = edit ? "revise" : "verify"
+                            info(`${chalk.blue("▷")} ${phase}     ${c.file}`)
+                        }
+                    }
+                    else if (c !== undefined && phase === "verify" && edit) {
+                        phase = "revise"
+                        info(`${chalk.blue("▷")} revise     ${c.file}`)
                     }
                     if (verbose >= 1) {
                         const file   = typeof input.file_path === "string" ? input.file_path : ""

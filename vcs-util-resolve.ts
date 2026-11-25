@@ -49,6 +49,16 @@ import {
 type Verdict           = "NONE" | "RESOLVED" | "PARTIAL"
 export type Resolution = { verdict: Verdict, operation: Operation, escalations: Escalation[], backupDir: string }
 
+/*  human-readable descriptions of the conflict kinds  */
+const kindInfo: Record<Conflict["kind"], string> = {
+    "content":       "both sides changed the same lines",
+    "binary":        "both sides changed the binary file",
+    "submodule":     "both sides changed the submodule commit",
+    "rename":        "conflicting renames",
+    "modify/delete": "modified on one side, deleted on the other",
+    "delete/delete": "deleted on both sides"
+}
+
 /*  resolve the conflicts of the in-progress operation of a worktree  */
 export const resolveConflicts = async (dir: string, safe: boolean): Promise<Resolution> => {
     const root   = await gitOK(dir, [ "rev-parse", "--show-toplevel" ], "determine the root directory of the worktree")
@@ -104,7 +114,7 @@ export const resolveConflicts = async (dir: string, safe: boolean): Promise<Reso
     if (toAI.length > 0) {
         info(`resolving ${toAI.length} conflicted file(s) via Claude`)
         for (const c of toAI)
-            info(`${chalk.blue("▶")} ${c.file} (${c.kind})`)
+            info(`${chalk.blue("●")} conflict   ${c.file} (${kindInfo[c.kind]})`)
         const result = await aiResolve(root, backupDir, op, theirs, toAI, safe)
         if (result === null) {
             /*  restore all files from their backups  */
@@ -144,6 +154,14 @@ export const resolveConflicts = async (dir: string, safe: boolean): Promise<Reso
                 else
                     toStage.push(rel)
             }
+        }
+
+        /*  report the outcome per file (details of escalations are reported by the caller)  */
+        for (const c of toAI) {
+            if (escalations.some((e) => e.file === c.file))
+                info(`${chalk.yellow("✗")} escalated  ${c.file}`)
+            else
+                info(`${chalk.green("✓")} resolved   ${c.file}`)
         }
     }
 

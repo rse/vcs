@@ -426,8 +426,13 @@ compatible conflict hunks are resolved, while contradicting hunks are
 kept as-is with their conflict markers and escalated. No change is ever
 lost: all conflicted files are backed up before, every resolution is
 checked for change preservation, and files with leftover conflict
-markers are never staged. Only the results and one-line information on
-escalated conflicts are shown.
+markers are never staged.
+
+The progress is shown per file and phase: `conflict` lists each file
+handed to Claude with its conflict kind, `resolve` marks the start of its
+resolution, `verify` and `revise` mark a later re-check or re-edit of it,
+and `resolved` or `escalated` its final outcome. Escalated conflicts are
+additionally shown with one-line information on both sides.
 
 License
 -------
