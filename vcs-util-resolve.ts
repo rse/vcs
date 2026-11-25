@@ -114,7 +114,7 @@ export const resolveConflicts = async (dir: string, safe: boolean): Promise<Reso
     if (toAI.length > 0) {
         info(`resolving ${toAI.length} conflicted file(s) via Claude`)
         for (const c of toAI)
-            info(`${chalk.blue("●")} conflict   ${c.file} (${kindInfo[c.kind]})`)
+            info(`${chalk.blue("●")} conflict  ${c.file} (${kindInfo[c.kind]})`)
         const result = await aiResolve(root, backupDir, op, theirs, toAI, safe)
         if (result === null) {
             /*  restore all files from their backups  */
@@ -159,9 +159,9 @@ export const resolveConflicts = async (dir: string, safe: boolean): Promise<Reso
         /*  report the outcome per file (details of escalations are reported by the caller)  */
         for (const c of toAI) {
             if (escalations.some((e) => e.file === c.file))
-                info(`${chalk.yellow("✗")} escalated  ${c.file}`)
+                info(`${chalk.yellow("✗")} escalated ${c.file}`)
             else
-                info(`${chalk.green("✓")} resolved   ${c.file}`)
+                info(`${chalk.green("✓")} resolved  ${c.file}`)
         }
     }
 

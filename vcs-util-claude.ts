@@ -233,16 +233,16 @@ Procedure:
                         if (!seen.has(c.file)) {
                             seen.add(c.file)
                             phase = "resolve"
-                            info(`${chalk.blue("▷")} resolve    ${c.file} [${seen.size}/${conflicts.length}]`)
+                            info(`${chalk.blue("▷")} resolve   ${c.file} [${seen.size}/${conflicts.length}]`)
                         }
                         else {
                             phase = edit ? "revise" : "verify"
-                            info(`${chalk.blue("▷")} ${phase}     ${c.file}`)
+                            info(`${chalk.blue("▷")} ${phase}    ${c.file}`)
                         }
                     }
                     else if (c !== undefined && phase === "verify" && edit) {
                         phase = "revise"
-                        info(`${chalk.blue("▷")} revise     ${c.file}`)
+                        info(`${chalk.blue("▷")} revise    ${c.file}`)
                     }
                     if (verbose >= 1) {
                         const file   = typeof input.file_path === "string" ? input.file_path : ""
